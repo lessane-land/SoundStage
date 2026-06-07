@@ -110,14 +110,15 @@ final class TrackDecoder {
             CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: byteCount, destination: &interleaved)
 
             if channels == 2 {
-                // Mid/side stereo widening baked into the buffer.
+                // Mid/side stereo widening, soft-clipped (tanh) so widening can
+                // never hard-clip into harsh noise.
                 for frame in 0..<Int(frames) {
                     let left = interleaved[frame * 2]
                     let right = interleaved[frame * 2 + 1]
                     let mid = (left + right) * 0.5
                     let side = (left - right) * 0.5 * widthFactor
-                    channelData[0][frame] = max(-1, min(1, mid + side))
-                    channelData[1][frame] = max(-1, min(1, mid - side))
+                    channelData[0][frame] = tanhf(mid + side)
+                    channelData[1][frame] = tanhf(mid - side)
                 }
             } else {
                 for frame in 0..<Int(frames) {

@@ -170,9 +170,9 @@ final class AudioEngine: @unchecked Sendable {
         configureIfNeeded()
         applyReverbAndEQLocked(preset)
 
-        // Stereo Width is baked into decoded buffers (0.5 -> normal). If it
-        // changed for a loaded track, re-decode from the current position.
-        let newWidth = clamp(preset.stereoWidth, 0, 1) * 2
+        // Stereo Width is baked into decoded buffers. Gentle range (0.6...1.4)
+        // so widening stays clean. If it changed, re-decode from current spot.
+        let newWidth = 0.6 + clamp(preset.stereoWidth, 0, 1) * 0.8
         if abs(newWidth - currentWidthFactor) > 0.01 {
             currentWidthFactor = newWidth
             reloadDecoderAtCurrentPositionLocked()
@@ -344,6 +344,9 @@ final class AudioEngine: @unchecked Sendable {
         reverb.loadFactoryPreset(.mediumHall)
         currentReverbPreset = .mediumHall
         reverb.wetDryMix = 0
+
+        // Headroom so EQ boosts + reverb + widening can't clip the output.
+        engine.mainMixerNode.outputVolume = 0.8
 
         isConfigured = true
     }
