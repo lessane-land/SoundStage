@@ -117,7 +117,10 @@ struct MusicBrowserView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(viewModel.results) { track in
-                    Button { viewModel.play(track) } label: {
+                    Button {
+                        viewModel.play(track)
+                        dismiss()
+                    } label: {
                         SongRow(track: track, preset: preset, isCurrent: track.id == currentTrackID)
                     }
                     .buttonStyle(ScaleButtonStyle(pressedScale: 0.98))

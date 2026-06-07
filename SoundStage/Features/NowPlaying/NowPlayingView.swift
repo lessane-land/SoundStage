@@ -84,6 +84,48 @@ struct NowPlayingView: View {
             actions: { Button("OK", role: .cancel) { viewModel.loadError = nil } },
             message: { Text(viewModel.loadError ?? "") }
         )
+        .overlay {
+            if viewModel.isExporting { exportOverlay }
+        }
+        .sheet(isPresented: Binding(
+            get: { viewModel.exportedFileURL != nil },
+            set: { if !$0 { viewModel.exportedFileURL = nil } }
+        )) {
+            if let url = viewModel.exportedFileURL {
+                ActivityView(items: [url])
+            }
+        }
+    }
+
+    // MARK: - Export overlay
+
+    private var exportOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            VStack(spacing: DesignTokens.Spacing.l) {
+                Text("Rendering your 16D")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Playing through once to capture it.")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.5))
+                ProgressView(value: viewModel.exportProgress)
+                    .tint(preset.toColor)
+                    .frame(width: 220)
+                Text("\(Int(viewModel.exportProgress * 100))%")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .monospacedDigit()
+                Button("Cancel") { viewModel.cancelExport() }
+                    .foregroundStyle(preset.toColor)
+                    .padding(.top, DesignTokens.Spacing.s)
+            }
+            .padding(DesignTokens.Spacing.xl)
+            .background(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
+                    .fill(DesignTokens.Palette.cardFill)
+            )
+        }
     }
 
     // MARK: - Background
@@ -111,6 +153,10 @@ struct NowPlayingView: View {
         HStack {
             iconButton(systemName: "chevron.down", action: { showPresetSelector = true })
                 .accessibilityLabel("Choose preset")
+            iconButton(systemName: "square.and.arrow.up", action: { viewModel.startExport() })
+                .disabled(!viewModel.canExport)
+                .opacity(viewModel.canExport ? 1 : 0.35)
+                .accessibilityLabel("Export 16D")
             Spacer()
             VStack(spacing: 2) {
                 Text("SPATIAL AUDIO")
