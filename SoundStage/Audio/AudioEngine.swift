@@ -1,5 +1,4 @@
 import AVFoundation
-import CoreMedia
 
 enum AudioEngineError: Error {
     case trackHasNoAsset
@@ -11,15 +10,18 @@ enum AudioEngineError: Error {
 /// Signal flow:
 ///   player → AVAudioUnitEQ → AVAudioUnitReverb → mainMixer → output
 ///
-/// Library tracks (`MPMediaItem.assetURL`, i.e. `ipod-library://` URLs) cannot
-/// be opened by `AVAudioFile`, so we decode them up front with `AVAssetReader`
-/// into a single PCM buffer and schedule that on the player node. This is what
-/// lets the EQ/reverb actually process the user's music. (DRM-protected or
-/// cloud-only items can't be decoded and surface as `decodingFailed`.)
+/// Library tracks (`MPMediaItem.assetURL`, i.e. `ipod-library://` URLs) can't be
+/// opened by `AVAudioFile`, so playback streams PCM chunks decoded by
+/// `TrackSource`/`TrackDecoder` (`AVAssetReader`) and schedules them on the
+/// player node with look-ahead. This keeps memory flat and start latency low,
+/// and lets the EQ/reverb actually process the user's music. DRM/cloud-only
+/// items can't be decoded and surface as `decodingFailed`.
 ///
-/// Concurrency: this type is deliberately **not** `@MainActor`. All mutable
-/// state is guarded by `lock` (an `NSLock`, to avoid `DispatchQueue`), so it's
-/// safe to call from any isolation domain — hence `@unchecked Sendable`.
+/// Concurrency: deliberately **not** `@MainActor`. All mutable state is guarded
+/// by `lock` (an `NSLock`, to avoid `DispatchQueue`), so it's safe to call from
+/// any isolation domain — hence `@unchecked Sendable`. Locking lives only in
+/// synchronous helpers; the async `load` does its `await`s lock-free and then
+/// hands off to `install`.
 final class AudioEngine: @unchecked Sendable {
 
     static let shared = AudioEngine()
@@ -30,16 +32,23 @@ final class AudioEngine: @unchecked Sendable {
     private let reverb = AVAudioUnitReverb()
 
     private let lock = NSLock()
-    private var currentBuffer: AVAudioPCMBuffer?
+    private let sampleRate = 44_100.0
+    /// Buffers scheduled ahead of the playhead.
+    private let prefetchCount = 3
+
+    private var source: TrackSource?
+    private var decoder: TrackDecoder?
     private var isConfigured = false
 
-    /// Frame the current segment was scheduled from (advances on seek/pause).
-    private var seekFrameOffset: AVAudioFramePosition = 0
-    /// Whether a segment is currently scheduled on the player.
-    private var hasScheduled = false
-    /// Monotonic position cache so the reported time doesn't snap back to the
-    /// segment start when the player stops at the end of a buffer.
+    private var totalFrames: AVAudioFramePosition = 0
+    /// Frame the current decoder started at (advances on seek).
+    private var baseFrame: AVAudioFramePosition = 0
+    /// Monotonic position cache so reported time never snaps backward.
     private var lastReportedFrame: AVAudioFramePosition = 0
+    /// Bumped on every load/seek so stale completion callbacks are ignored.
+    private var generation = 0
+    /// Set when the decoder is exhausted (so end-of-track can be reported).
+    private var atEnd = false
 
     private init() {}
 
@@ -50,16 +59,6 @@ final class AudioEngine: @unchecked Sendable {
         configureIfNeeded()
     }
 
-    func start() throws {
-        lock.lock(); defer { lock.unlock() }
-        configureIfNeeded()
-        try activateSession()
-        engine.prepare()
-        if !engine.isRunning {
-            try engine.start()
-        }
-    }
-
     func stop() {
         lock.lock(); defer { lock.unlock() }
         player.stop()
@@ -68,36 +67,42 @@ final class AudioEngine: @unchecked Sendable {
 
     // MARK: - Playback state
 
-    /// Total duration of the loaded track in seconds (0 if nothing loaded).
     var duration: TimeInterval {
         lock.lock(); defer { lock.unlock() }
-        guard let buffer = currentBuffer else { return 0 }
-        return Double(buffer.frameLength) / buffer.format.sampleRate
+        guard source != nil else { return 0 }
+        return Double(totalFrames) / sampleRate
     }
 
-    /// Current playback position in seconds. Frozen while paused/seeking.
     var currentTime: TimeInterval {
         lock.lock(); defer { lock.unlock() }
-        guard let buffer = currentBuffer else { return 0 }
-        return Double(currentFrameLocked()) / buffer.format.sampleRate
+        guard source != nil else { return 0 }
+        return Double(currentFrameLocked()) / sampleRate
     }
 
     // MARK: - Loading
 
-    /// Decodes a track's asset into a PCM buffer and readies it for playback.
-    /// Throws if the track has no asset or can't be decoded (e.g. DRM).
+    /// Loads a track for streaming playback. Throws if it has no asset or can't
+    /// be decoded (e.g. DRM). Performs its `await`s lock-free, then installs.
     func load(track: Track) async throws {
         guard let url = track.assetURL else { throw AudioEngineError.trackHasNoAsset }
-        let buffer = try await Self.decode(url: url)
+        let source = try await TrackSource(url: url, sampleRate: sampleRate)
+        let decoder = try source.makeDecoder(fromFrame: 0)
+        install(source: source, decoder: decoder)
+    }
 
+    private func install(source: TrackSource, decoder: TrackDecoder) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
-        engine.connect(player, to: eq, format: buffer.format)
+        engine.connect(player, to: eq, format: source.format)
         player.stop()
-        currentBuffer = buffer
-        seekFrameOffset = 0
+        generation += 1
+        self.source = source
+        self.decoder = decoder
+        totalFrames = source.totalFrames
+        baseFrame = 0
         lastReportedFrame = 0
-        hasScheduled = false
+        atEnd = false
+        primeLocked()
     }
 
     // MARK: - Transport
@@ -107,35 +112,28 @@ final class AudioEngine: @unchecked Sendable {
         configureIfNeeded()
         try? activateSession()
         startEngineIfNeededLocked()
-        if !hasScheduled {
-            scheduleSegmentLocked()
-        }
         player.play()
     }
 
-    /// Pauses by capturing the position and stopping, so playback resumes from
-    /// the same frame.
     func pause() {
         lock.lock(); defer { lock.unlock() }
-        seekFrameOffset = currentFrameLocked()
-        lastReportedFrame = seekFrameOffset
-        player.stop()
-        hasScheduled = false
+        player.pause()
     }
 
-    /// Seeks to a time (seconds), preserving the playing/paused state.
     func seek(to time: TimeInterval) {
         lock.lock(); defer { lock.unlock() }
-        guard let buffer = currentBuffer else { return }
-        let sampleRate = buffer.format.sampleRate
+        guard let source else { return }
         let target = AVAudioFramePosition((max(0, time) * sampleRate).rounded())
+        let frame = min(target, totalFrames)
         let wasPlaying = player.isPlaying
 
         player.stop()
-        seekFrameOffset = min(target, AVAudioFramePosition(buffer.frameLength))
-        lastReportedFrame = seekFrameOffset
-        hasScheduled = false
-        scheduleSegmentLocked()
+        generation += 1
+        baseFrame = frame
+        lastReportedFrame = frame
+        atEnd = false
+        decoder = try? source.makeDecoder(fromFrame: frame)
+        primeLocked()
 
         if wasPlaying {
             startEngineIfNeededLocked()
@@ -145,7 +143,6 @@ final class AudioEngine: @unchecked Sendable {
 
     // MARK: - Presets
 
-    /// Copies a preset's parameters onto the live reverb and EQ nodes.
     func apply(_ preset: Preset) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
@@ -166,6 +163,34 @@ final class AudioEngine: @unchecked Sendable {
                 band.gain = 0
             }
         }
+    }
+
+    // MARK: - Feeding (call with `lock` held)
+
+    private func primeLocked() {
+        for _ in 0..<prefetchCount {
+            feedLocked(generation: generation)
+        }
+    }
+
+    private func feedLocked(generation gen: Int) {
+        guard gen == generation, let decoder else { return }
+        guard let buffer = decoder.nextBuffer() else {
+            atEnd = true
+            return
+        }
+        player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
+            guard let self else { return }
+            // Hop off the audio thread; a detached task avoids re-entering the
+            // lock synchronously during stop().
+            Task.detached { self.feedNext(expecting: gen) }
+        }
+    }
+
+    /// Called (off-thread) when a scheduled buffer has been consumed.
+    private func feedNext(expecting gen: Int) {
+        lock.lock(); defer { lock.unlock() }
+        feedLocked(generation: gen)
     }
 
     // MARK: - Private helpers (call with `lock` held)
@@ -199,127 +224,20 @@ final class AudioEngine: @unchecked Sendable {
         try? engine.start()
     }
 
-    /// Schedules the remainder of the buffer from `seekFrameOffset`.
-    private func scheduleSegmentLocked() {
-        guard let buffer = currentBuffer else { return }
-        let segment: AVAudioPCMBuffer
-        if seekFrameOffset <= 0 {
-            segment = buffer
-        } else {
-            guard let sliced = Self.slice(buffer, from: AVAudioFrameCount(seekFrameOffset)) else { return }
-            segment = sliced
-        }
-        guard segment.frameLength > 0 else { return }
-        player.scheduleBuffer(segment, at: nil, options: [], completionHandler: nil)
-        hasScheduled = true
-    }
-
     private func currentFrameLocked() -> AVAudioFramePosition {
-        guard let buffer = currentBuffer else { return 0 }
-        let length = AVAudioFramePosition(buffer.frameLength)
         if player.isPlaying,
            let nodeTime = player.lastRenderTime,
            let playerTime = player.playerTime(forNodeTime: nodeTime) {
-            let frame = min(seekFrameOffset + playerTime.sampleTime, length)
+            let frame = min(baseFrame + playerTime.sampleTime, totalFrames)
             lastReportedFrame = max(lastReportedFrame, frame)
+        } else if atEnd {
+            // Decoder drained and the queue has finished playing.
+            lastReportedFrame = totalFrames
         }
-        return min(lastReportedFrame, length)
+        return min(lastReportedFrame, totalFrames)
     }
 
     private func clamp(_ value: Float, _ lower: Float, _ upper: Float) -> Float {
         min(max(value, lower), upper)
-    }
-
-    // MARK: - Decoding
-
-    /// Decodes an audio asset URL into a standard float PCM buffer (stereo,
-    /// 44.1kHz). Reads in chunks straight into the destination buffer.
-    private static func decode(url: URL) async throws -> AVAudioPCMBuffer {
-        let asset = AVURLAsset(url: url)
-        guard let assetTrack = try await asset.loadTracks(withMediaType: .audio).first else {
-            throw AudioEngineError.decodingFailed
-        }
-
-        let sampleRate = 44_100.0
-        let channels = 2
-        let reader = try AVAssetReader(asset: asset)
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false,
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: channels
-        ]
-        let output = AVAssetReaderTrackOutput(track: assetTrack, outputSettings: settings)
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { throw AudioEngineError.decodingFailed }
-        reader.add(output)
-        guard reader.startReading() else { throw reader.error ?? AudioEngineError.decodingFailed }
-
-        // Preallocate from the asset duration (+ padding for rounding), with a
-        // bounded fallback if the duration is unknown/indefinite (avoids NaN).
-        let duration = try await asset.load(.duration)
-        let seconds = CMTimeGetSeconds(duration)
-        let safeSeconds = (seconds.isFinite && seconds > 0) ? seconds : 600
-        let estimatedFrames = AVAudioFrameCount(safeSeconds * sampleRate) + 8_192
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: AVAudioChannelCount(channels)),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: estimatedFrames),
-              let channelData = buffer.floatChannelData else {
-            throw AudioEngineError.decodingFailed
-        }
-
-        var writeFrame = 0
-        let capacity = Int(estimatedFrames)
-
-        while reader.status == .reading, let sample = output.copyNextSampleBuffer() {
-            if let blockBuffer = CMSampleBufferGetDataBuffer(sample) {
-                let byteCount = CMBlockBufferGetDataLength(blockBuffer)
-                let floatCount = byteCount / MemoryLayout<Float>.size
-                var interleaved = [Float](repeating: 0, count: floatCount)
-                CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: byteCount, destination: &interleaved)
-
-                let frames = floatCount / channels
-                let writable = min(frames, capacity - writeFrame)
-                if writable > 0 {
-                    for frame in 0..<writable {
-                        for channel in 0..<channels {
-                            channelData[channel][writeFrame + frame] = interleaved[frame * channels + channel]
-                        }
-                    }
-                    writeFrame += writable
-                }
-            }
-            CMSampleBufferInvalidate(sample)
-        }
-
-        if reader.status == .failed {
-            throw reader.error ?? AudioEngineError.decodingFailed
-        }
-        guard writeFrame > 0 else { throw AudioEngineError.decodingFailed }
-
-        buffer.frameLength = AVAudioFrameCount(writeFrame)
-        return buffer
-    }
-
-    /// Copies the buffer from `start` to the end into a fresh buffer.
-    private static func slice(_ buffer: AVAudioPCMBuffer, from start: AVAudioFrameCount) -> AVAudioPCMBuffer? {
-        let total = buffer.frameLength
-        guard start < total else { return nil }
-        let count = total - start
-        guard let out = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: count),
-              let src = buffer.floatChannelData,
-              let dst = out.floatChannelData else {
-            return nil
-        }
-        out.frameLength = count
-        let channels = Int(buffer.format.channelCount)
-        for channel in 0..<channels {
-            for frame in 0..<Int(count) {
-                dst[channel][frame] = src[channel][Int(start) + frame]
-            }
-        }
-        return out
     }
 }
