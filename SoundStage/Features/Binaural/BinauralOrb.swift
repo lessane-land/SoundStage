@@ -22,8 +22,11 @@ struct BinauralOrb: View {
             ZStack {
                 // Deep glow.
                 Circle()
-                    .fill(RadialGradient(colors: [state.toColor.opacity(0.5), state.fromColor.opacity(0.13), .clear],
-                                         center: .center, startRadius: 0, endRadius: size * 0.8))
+                    .fill(RadialGradient(gradient: Gradient(stops: [
+                        .init(color: state.toColor.opacity(0.33), location: 0),
+                        .init(color: state.fromColor.opacity(0.13), location: 0.38),
+                        .init(color: .clear, location: 0.66)
+                    ]), center: .center, startRadius: 0, endRadius: size * 0.8))
                     .frame(width: size * 1.6, height: size * 1.6)
                     .blur(radius: 6)
 
@@ -50,7 +53,9 @@ struct BinauralOrb: View {
                 Circle()
                     .fill(.white)
                     .frame(width: lead ? 12 : 7, height: lead ? 12 : 7)
-                    .shadow(color: state.toColor, radius: lead ? 9 : 5)
+                    .shadow(color: state.toColor, radius: lead ? 10 : 6)
+                    .shadow(color: state.toColor.opacity(0.8), radius: lead ? 6 : 3)
+                    .shadow(color: .white.opacity(0.9), radius: 3)
                     .opacity(lead ? 1 : 0.7)
                     .offset(x: ringSize / 2)
                     .rotationEffect(.radians(Double(i) / 4 * 2 * .pi))
@@ -61,7 +66,7 @@ struct BinauralOrb: View {
     private var orb: some View {
         Circle()
             .fill(RadialGradient(colors: [state.fromColor, state.toColor],
-                                 center: UnitPoint(x: 0.34, y: 0.28), startRadius: 0, endRadius: size * 0.66))
+                                 center: UnitPoint(x: 0.34, y: 0.28), startRadius: 0, endRadius: size * 0.62))
             .overlay(
                 // glossy top sheen
                 Ellipse()

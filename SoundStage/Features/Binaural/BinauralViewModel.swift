@@ -19,10 +19,6 @@ final class BinauralViewModel {
     private(set) var ambienceLevel: Double = 0.5
     private(set) var spatialAmount: Double = 0.4
 
-    /// Head-tracked spatial (AirPods).
-    private(set) var headTracking = false
-    var headTrackingAvailable: Bool { tracker.isAvailable }
-
     private let engine: BinauralEngine
     private let tracker = HeadTracker()
 
@@ -32,19 +28,8 @@ final class BinauralViewModel {
         self.current = start
         self.carrierHz = start.carrierHz
         self.beatHz = start.beatHz
-    }
-
-    func toggleHeadTracking() {
-        guard tracker.isAvailable else { return }
-        headTracking.toggle()
-        if headTracking {
-            let engine = self.engine
-            tracker.start(onYaw: { engine.setHeadYaw($0) })
-            engine.setHeadTracking(true)
-        } else {
-            tracker.stop()
-            engine.setHeadTracking(false)
-        }
+        // Head tracking is always on (no UI). No-op without supported AirPods.
+        tracker.start(onYaw: { engine.setHeadYaw($0) })
     }
 
     func toggleAmbience(_ value: Ambience) {
