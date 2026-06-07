@@ -49,6 +49,12 @@ final class AudioEngine: @unchecked Sendable {
     /// Reverb factory preset currently loaded, so we only reload (which clicks)
     /// when the room-size bucket actually changes — not on every slider tick.
     private var currentReverbPreset: AVAudioUnitReverbPreset?
+
+    // 16D rotation: the signature spinning-around-your-head effect, made by
+    // sweeping the stereo pan with an LFO.
+    private var rotationSpeed: Double = 0      // revolutions per second; 0 = off
+    private var rotationDepth: Float = 0.95    // how wide the swing goes (0...1)
+    private var rotationTask: Task<Void, Never>?
     /// Frame the current decoder started at (advances on seek).
     private var baseFrame: AVAudioFramePosition = 0
     /// Monotonic position cache so reported time never snaps backward.
@@ -179,6 +185,63 @@ final class AudioEngine: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
         applyReverbAndEQLocked(preset)
+    }
+
+    // MARK: - 16D rotation
+
+    /// Sets the 16D spin rate (revolutions per second). 0 disables it and
+    /// recenters. ~0.05–0.25 rev/s is the typical "8D/16D" sweet spot.
+    func setRotation(speed: Double) {
+        lock.lock()
+        rotationSpeed = max(0, speed)
+        let active = rotationSpeed > 0
+        let alreadyRunning = rotationTask != nil
+        lock.unlock()
+
+        if active && !alreadyRunning {
+            startRotationLoop()
+        } else if !active {
+            stopRotationLoop()
+        }
+    }
+
+    private func startRotationLoop() {
+        lock.lock()
+        guard rotationTask == nil else { lock.unlock(); return }
+        rotationTask = Task.detached { [weak self] in
+            var angle = 0.0
+            var last = Date()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(16))
+                guard let self else { return }
+                let now = Date()
+                let dt = now.timeIntervalSince(last)
+                last = now
+                let (speed, depth) = self.rotationParams()
+                guard speed > 0 else { continue }
+                angle += 2 * Double.pi * speed * dt
+                self.setMixerPan(Float(sin(angle)) * depth)
+            }
+        }
+        lock.unlock()
+    }
+
+    private func stopRotationLoop() {
+        lock.lock()
+        rotationTask?.cancel()
+        rotationTask = nil
+        lock.unlock()
+        setMixerPan(0)
+    }
+
+    private func rotationParams() -> (Double, Float) {
+        lock.lock(); defer { lock.unlock() }
+        return (rotationSpeed, rotationDepth)
+    }
+
+    private func setMixerPan(_ pan: Float) {
+        lock.lock(); defer { lock.unlock() }
+        engine.mainMixerNode.pan = max(-1, min(1, pan))
     }
 
     private func applyReverbAndEQLocked(_ preset: Preset) {

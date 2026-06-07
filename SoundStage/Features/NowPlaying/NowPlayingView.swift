@@ -40,6 +40,9 @@ struct NowPlayingView: View {
                 transportControls
                     .padding(.top, 16)
 
+                rotationControl
+                    .padding(.top, 16)
+
                 EQSpectrumView(preset: preset, isPlaying: viewModel.isPlaying)
                     .frame(height: 72)
                     .opacity(0.92)
@@ -290,6 +293,29 @@ struct NowPlayingView: View {
                        diameter: 44) { repeatOn.toggle() }
                 .accessibilityLabel("Repeat")
         }
+    }
+
+    private var rotationControl: some View {
+        HStack(spacing: 12) {
+            Text("16D")
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundStyle(viewModel.rotationAmount > 0 ? preset.toColor : .white.opacity(0.4))
+                .frame(width: 34, alignment: .leading)
+            Slider(
+                value: Binding(
+                    get: { viewModel.rotationAmount },
+                    set: { viewModel.setRotation(amount: $0) }
+                ),
+                in: 0...1
+            )
+            .tint(preset.toColor)
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 13))
+                .foregroundStyle(viewModel.rotationAmount > 0 ? preset.toColor : .white.opacity(0.35))
+        }
+        .padding(.horizontal, DesignTokens.Spacing.m)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("16D spin")
     }
 
     private func ctrlButton(systemName: String, size: CGFloat, color: Color, diameter: CGFloat, enabled: Bool = true, action: @escaping () -> Void) -> some View {

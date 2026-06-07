@@ -158,6 +158,14 @@ final class NowPlayingViewModel {
         engine.apply(preset)
     }
 
+    /// The 16D spin amount (0 = off ... 1 = fast), the signature rotating effect.
+    private(set) var rotationAmount: Double = 0
+
+    func setRotation(amount: Double) {
+        rotationAmount = max(0, min(1, amount))
+        engine.setRotation(speed: rotationAmount * 0.3)
+    }
+
     /// Live-applies a preset's reverb/EQ while the user drags the detail sliders,
     /// without committing it as the active preset.
     func previewPreset(_ preset: Preset) {
