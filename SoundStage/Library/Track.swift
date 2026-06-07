@@ -18,6 +18,10 @@ struct Track: Identifiable, Equatable, Sendable {
     /// plain `UInt64` so `Track` stays free of MediaPlayer types and `Sendable`.
     let artworkID: UInt64?
 
+    /// Whether the track has a local, non-DRM asset the engine can decode.
+    /// Protected (Apple Music) or cloud-only items are not playable.
+    let isPlayable: Bool
+
     /// `mm:ss` formatted duration for display.
     var formattedDuration: String {
         let total = Int(duration.rounded())
@@ -34,6 +38,7 @@ extension Track {
         albumTitle: "",
         duration: 0,
         assetURL: nil,
-        artworkID: nil
+        artworkID: nil,
+        isPlayable: false
     )
 }

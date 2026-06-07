@@ -56,11 +56,12 @@ struct LibraryView: View {
         List {
             ForEach(viewModel.visibleTracks) { track in
                 Button {
-                    onSelect(track, viewModel.visibleTracks)
+                    onSelect(track, viewModel.playableTracks)
                     dismiss()
                 } label: {
                     TrackRow(track: track)
                 }
+                .disabled(!track.isPlayable)
                 .listRowBackground(Color.clear)
                 .listRowSeparatorTint(DesignTokens.Palette.cardStroke)
             }
@@ -122,14 +123,22 @@ private struct TrackRow: View {
 
             Spacer()
 
-            if track.duration > 0 {
-                Text(track.formattedDuration)
-                    .font(DesignTokens.Typography.caption)
+            if track.isPlayable {
+                if track.duration > 0 {
+                    Text(track.formattedDuration)
+                        .font(DesignTokens.Typography.caption)
+                        .foregroundStyle(DesignTokens.Palette.textSecondary)
+                        .monospacedDigit()
+                }
+            } else {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12))
                     .foregroundStyle(DesignTokens.Palette.textSecondary)
-                    .monospacedDigit()
+                    .accessibilityLabel("Protected, can't be played")
             }
         }
         .padding(.vertical, DesignTokens.Spacing.xs)
+        .opacity(track.isPlayable ? 1 : 0.4)
         .contentShape(Rectangle())
     }
 }

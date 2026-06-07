@@ -34,7 +34,8 @@ extension Track {
     static func stub(
         id: String,
         title: String = "Title",
-        artist: String = "Artist"
+        artist: String = "Artist",
+        isPlayable: Bool = true
     ) -> Track {
         Track(
             id: id,
@@ -43,7 +44,8 @@ extension Track {
             albumTitle: "Album",
             duration: 180,
             assetURL: nil,
-            artworkID: nil
+            artworkID: nil,
+            isPlayable: isPlayable
         )
     }
 }

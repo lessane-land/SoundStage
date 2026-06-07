@@ -41,29 +41,32 @@ final class LibraryService: LibraryProviding {
         return Self.map(raw)
     }
 
-    /// Fetches songs that have a local asset (so they can be decoded and played
-    /// through the engine), mapped to `Track` values. Cloud-only items without
-    /// an `assetURL` are skipped.
+    /// Fetches all songs in the library, mapped to `Track` values. Each track is
+    /// flagged `isPlayable` based on whether it has a local, non-DRM asset.
     func fetchSongs() async -> [Track] {
         let query = MPMediaQuery.songs()
         guard let items = query.items else { return [] }
-        return items.compactMap { item in
-            guard item.assetURL != nil else { return nil }
-            return Self.track(from: item)
-        }
+        return items.map(Self.track(from:))
     }
 
     // MARK: - Mapping
 
     private static func track(from item: MPMediaItem) -> Track {
-        Track(
+        // Apple Music / DRM downloads have an assetURL but can't be decoded by
+        // AVAssetReader; cloud-only items have no local asset at all.
+        let isPlayable = item.assetURL != nil
+            && !item.hasProtectedAsset
+            && !item.isCloudItem
+
+        return Track(
             id: String(item.persistentID),
             title: item.title ?? "Unknown Title",
             artist: item.artist ?? "Unknown Artist",
             albumTitle: item.albumTitle ?? "",
             duration: item.playbackDuration,
             assetURL: item.assetURL,
-            artworkID: item.artwork != nil ? item.persistentID : nil
+            artworkID: item.artwork != nil ? item.persistentID : nil,
+            isPlayable: isPlayable
         )
     }
 

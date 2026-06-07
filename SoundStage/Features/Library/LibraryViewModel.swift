@@ -29,6 +29,12 @@ final class LibraryViewModel {
         self.service = service
     }
 
+    /// The currently visible, playable tracks — used to seed the play queue so
+    /// prev/next never lands on a protected/cloud item.
+    var playableTracks: [Track] {
+        visibleTracks.filter(\.isPlayable)
+    }
+
     /// Tracks filtered by the current search text (title or artist).
     var visibleTracks: [Track] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
