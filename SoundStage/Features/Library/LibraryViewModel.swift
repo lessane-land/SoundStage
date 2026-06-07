@@ -23,9 +23,9 @@ final class LibraryViewModel {
     private(set) var tracks: [Track] = []
     var searchText = ""
 
-    private let service: LibraryService
+    private let service: LibraryProviding
 
-    init(service: LibraryService = LibraryService()) {
+    init(service: LibraryProviding = LibraryService()) {
         self.service = service
     }
 

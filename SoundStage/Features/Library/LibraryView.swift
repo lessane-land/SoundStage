@@ -104,13 +104,8 @@ private struct TrackRow: View {
 
     var body: some View {
         HStack(spacing: DesignTokens.Spacing.m) {
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.control, style: .continuous)
-                .fill(DesignTokens.Palette.cardSurface)
+            ArtworkView(track: track, placeholderIconSize: 18)
                 .frame(width: 44, height: 44)
-                .overlay(
-                    Image(systemName: "music.note")
-                        .foregroundStyle(DesignTokens.Palette.textSecondary)
-                )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
@@ -139,4 +134,5 @@ private struct TrackRow: View {
 
 #Preview {
     LibraryView(viewModel: LibraryViewModel()) { _ in }
+        .environment(ArtworkLoader())
 }

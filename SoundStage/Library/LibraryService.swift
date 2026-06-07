@@ -1,29 +1,38 @@
 import Foundation
 import MediaPlayer
 
+/// Library authorization state, decoupled from MediaPlayer's enum.
+enum LibraryAuthorization {
+    case authorized
+    case denied
+    case restricted
+    case notDetermined
+}
+
+/// Abstraction over the music library so view models can be tested against a
+/// mock. `@MainActor` because the concrete backing (`MPMediaQuery`) is
+/// main-thread oriented.
+@MainActor
+protocol LibraryProviding {
+    var authorizationStatus: LibraryAuthorization { get }
+    func requestAuthorization() async -> LibraryAuthorization
+    func fetchSongs() async -> [Track]
+}
+
 /// Reads tracks and metadata from the user's local music library.
 ///
 /// Phase 1 backs onto `MPMediaLibrary` / `MPMediaQuery`. Authorization and
-/// fetching are exposed as `async` APIs. `@MainActor` because `MPMediaQuery`
-/// and authorization callbacks are main-thread oriented and results feed view
-/// state directly.
+/// fetching are exposed as `async` APIs.
 @MainActor
-final class LibraryService {
-
-    enum Authorization {
-        case authorized
-        case denied
-        case restricted
-        case notDetermined
-    }
+final class LibraryService: LibraryProviding {
 
     /// Current authorization state without prompting.
-    var authorizationStatus: Authorization {
+    var authorizationStatus: LibraryAuthorization {
         Self.map(MPMediaLibrary.authorizationStatus())
     }
 
     /// Prompts for library access if not yet determined.
-    func requestAuthorization() async -> Authorization {
+    func requestAuthorization() async -> LibraryAuthorization {
         let raw = await withCheckedContinuation { continuation in
             MPMediaLibrary.requestAuthorization { status in
                 continuation.resume(returning: status)
@@ -48,11 +57,12 @@ final class LibraryService {
             artist: item.artist ?? "Unknown Artist",
             albumTitle: item.albumTitle ?? "",
             duration: item.playbackDuration,
-            assetURL: item.assetURL
+            assetURL: item.assetURL,
+            artworkID: item.artwork != nil ? item.persistentID : nil
         )
     }
 
-    private static func map(_ status: MPMediaLibraryAuthorizationStatus) -> Authorization {
+    private static func map(_ status: MPMediaLibraryAuthorizationStatus) -> LibraryAuthorization {
         switch status {
         case .authorized: return .authorized
         case .denied: return .denied

@@ -14,6 +14,10 @@ struct Track: Identifiable, Equatable, Sendable {
     let duration: TimeInterval
     let assetURL: URL?
 
+    /// Library persistent id used to look up artwork on demand. Stored as a
+    /// plain `UInt64` so `Track` stays free of MediaPlayer types and `Sendable`.
+    let artworkID: UInt64?
+
     /// `mm:ss` formatted duration for display.
     var formattedDuration: String {
         let total = Int(duration.rounded())
@@ -29,6 +33,7 @@ extension Track {
         artist: "Pick a track from your library",
         albumTitle: "",
         duration: 0,
-        assetURL: nil
+        assetURL: nil,
+        artworkID: nil
     )
 }

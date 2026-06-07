@@ -23,6 +23,7 @@ struct NowPlayingView: View {
                 WaveformView(isAnimating: viewModel.isPlaying)
                     .frame(height: 96)
                     .padding(.horizontal, DesignTokens.Spacing.m)
+                progressSection
                 transportControls
                 Spacer(minLength: 0)
                 presetChip
@@ -78,19 +79,50 @@ struct NowPlayingView: View {
     }
 
     private var artwork: some View {
-        RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
-            .fill(DesignTokens.Palette.cardSurface)
-            .overlay(
-                Image(systemName: "music.note")
-                    .font(.system(size: 64, weight: .light))
-                    .foregroundStyle(DesignTokens.Palette.textSecondary)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
-                    .stroke(DesignTokens.Palette.cardStroke, lineWidth: 1)
-            )
-            .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: 320)
+        ArtworkView(
+            track: viewModel.currentTrack,
+            cornerRadius: DesignTokens.Radius.card,
+            placeholderIconSize: 64
+        )
+        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: 320)
+    }
+
+    private var progressSection: some View {
+        VStack(spacing: DesignTokens.Spacing.xs) {
+            Slider(value: scrubBinding, in: 0...1) { editing in
+                if editing {
+                    viewModel.beginSeeking()
+                } else {
+                    viewModel.endSeeking()
+                }
+            }
+            .tint(DesignTokens.Palette.accent)
+            .disabled(viewModel.duration <= 0)
+
+            HStack {
+                Text(timeString(viewModel.elapsed))
+                Spacer()
+                Text(timeString(viewModel.duration))
+            }
+            .font(DesignTokens.Typography.caption)
+            .foregroundStyle(DesignTokens.Palette.textSecondary)
+            .monospacedDigit()
+        }
+        .padding(.horizontal, DesignTokens.Spacing.m)
+    }
+
+    private var scrubBinding: Binding<Double> {
+        Binding(
+            get: { viewModel.progress },
+            set: { viewModel.scrub(toFraction: $0) }
+        )
+    }
+
+    private func timeString(_ time: TimeInterval) -> String {
+        guard time.isFinite, time > 0 else { return "0:00" }
+        let total = Int(time.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     private var trackInfo: some View {
@@ -164,4 +196,5 @@ struct NowPlayingView: View {
     let store = PresetStore()
     NowPlayingView(viewModel: NowPlayingViewModel(presetStore: store))
         .environment(store)
+        .environment(ArtworkLoader())
 }

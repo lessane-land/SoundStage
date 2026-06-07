@@ -29,6 +29,11 @@ final class AudioEngine: @unchecked Sendable {
     private var currentFile: AVAudioFile?
     private var isConfigured = false
 
+    /// Frame the current segment was scheduled from (advances on seek/pause).
+    private var seekFrameOffset: AVAudioFramePosition = 0
+    /// Whether a segment is currently scheduled on the player.
+    private var hasScheduled = false
+
     private init() {}
 
     // MARK: - Lifecycle
@@ -58,6 +63,20 @@ final class AudioEngine: @unchecked Sendable {
 
     // MARK: - Playback
 
+    /// Total duration of the loaded track in seconds (0 if nothing loaded).
+    var duration: TimeInterval {
+        lock.lock(); defer { lock.unlock() }
+        guard let file = currentFile else { return 0 }
+        return Double(file.length) / file.processingFormat.sampleRate
+    }
+
+    /// Current playback position in seconds. Frozen while paused/seeking.
+    var currentTime: TimeInterval {
+        lock.lock(); defer { lock.unlock() }
+        guard let file = currentFile else { return 0 }
+        return Double(currentFrameLocked()) / file.processingFormat.sampleRate
+    }
+
     /// Loads a track's underlying asset and reconnects the chain to its format.
     func load(track: Track) throws {
         guard let url = track.assetURL else { throw AudioEngineError.trackHasNoAsset }
@@ -67,26 +86,50 @@ final class AudioEngine: @unchecked Sendable {
         configureIfNeeded()
         // Reconnect the player using the file's native format so sample rates match.
         engine.connect(player, to: eq, format: file.processingFormat)
+        player.stop()
         currentFile = file
+        seekFrameOffset = 0
+        hasScheduled = false
     }
 
     func play() {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
         try? activateSession()
-        if !engine.isRunning {
-            engine.prepare()
-            try? engine.start()
-        }
-        if let file = currentFile {
-            player.scheduleFile(file, at: nil)
+        startEngineIfNeededLocked()
+        if !hasScheduled {
+            scheduleSegmentLocked()
         }
         player.play()
     }
 
+    /// Pauses by capturing the position and stopping, so playback resumes from
+    /// the same frame. `AVAudioPlayerNode.pause` alone loses `playerTime`, so we
+    /// record the offset ourselves.
     func pause() {
         lock.lock(); defer { lock.unlock() }
-        player.pause()
+        seekFrameOffset = currentFrameLocked()
+        player.stop()
+        hasScheduled = false
+    }
+
+    /// Seeks to a time (seconds), preserving the playing/paused state.
+    func seek(to time: TimeInterval) {
+        lock.lock(); defer { lock.unlock() }
+        guard let file = currentFile else { return }
+        let sampleRate = file.processingFormat.sampleRate
+        let target = AVAudioFramePosition((max(0, time) * sampleRate).rounded())
+        let wasPlaying = player.isPlaying
+
+        player.stop()
+        seekFrameOffset = min(target, file.length)
+        hasScheduled = false
+        scheduleSegmentLocked()
+
+        if wasPlaying {
+            startEngineIfNeededLocked()
+            player.play()
+        }
     }
 
     // MARK: - Presets
@@ -137,6 +180,38 @@ final class AudioEngine: @unchecked Sendable {
         reverb.wetDryMix = 0
 
         isConfigured = true
+    }
+
+    private func startEngineIfNeededLocked() {
+        guard !engine.isRunning else { return }
+        engine.prepare()
+        try? engine.start()
+    }
+
+    /// Schedules the remainder of the file from `seekFrameOffset`.
+    private func scheduleSegmentLocked() {
+        guard let file = currentFile else { return }
+        let frameCount = AVAudioFrameCount(max(0, file.length - seekFrameOffset))
+        guard frameCount > 0 else { return }
+        player.scheduleSegment(
+            file,
+            startingFrame: seekFrameOffset,
+            frameCount: frameCount,
+            at: nil
+        )
+        hasScheduled = true
+    }
+
+    /// Resolves the current playback frame, adding the seek offset to the
+    /// player's node time while playing, or the frozen offset otherwise.
+    private func currentFrameLocked() -> AVAudioFramePosition {
+        guard let file = currentFile else { return 0 }
+        if player.isPlaying,
+           let nodeTime = player.lastRenderTime,
+           let playerTime = player.playerTime(forNodeTime: nodeTime) {
+            return min(seekFrameOffset + playerTime.sampleTime, file.length)
+        }
+        return min(seekFrameOffset, file.length)
     }
 
     private func activateSession() throws {
