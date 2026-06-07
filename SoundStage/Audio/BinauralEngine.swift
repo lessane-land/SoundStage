@@ -59,12 +59,17 @@ final class BinauralEngine: @unchecked Sendable {
     private var brownL = [Float](repeating: 0, count: typeCount)
     private var brownR = [Float](repeating: 0, count: typeCount)
 
-    // Rain: near droplet voices (damped "plinks") at random pan/pitch.
+    // Rain: near droplet voices — short resonant noise "ticks" at random pan.
     private var rainEnv = [Float](repeating: 0, count: pool)
-    private var rainPh  = [Double](repeating: 0, count: pool)
-    private var rainInc = [Double](repeating: 0, count: pool)
+    private var rainBp1 = [Float](repeating: 0, count: pool)
+    private var rainBp2 = [Float](repeating: 0, count: pool)
+    private var rainCut = [Float](repeating: 0.4, count: pool)
     private var rainPan = [Float](repeating: 0.5, count: pool)
     private var rainDec = [Float](repeating: 0.999, count: pool)
+
+    // Gentle high-cut on the whole ambient bus (takes the harsh edge off).
+    private var ambBusLpL: Float = 0
+    private var ambBusLpR: Float = 0
 
     // Fire: crackle/pop voices.
     private var crkEnv = [Float](repeating: 0, count: pool)
@@ -187,8 +192,8 @@ final class BinauralEngine: @unchecked Sendable {
         engine.attach(tones)
         engine.attach(ambient)
         engine.attach(reverb)
-        reverb.loadFactoryPreset(.largeHall2)
-        reverb.wetDryMix = 48
+        reverb.loadFactoryPreset(.mediumRoom)
+        reverb.wetDryMix = 24
 
         engine.connect(tones, to: engine.mainMixerNode, format: format)
         engine.connect(ambient, to: reverb, format: format)
@@ -229,8 +234,8 @@ final class BinauralEngine: @unchecked Sendable {
         let breathInc = twoPi * 0.08 / sampleRate
         let target = targetAmplitude
         let step = (target - tonesAmp) / Double(max(1, frames))
-        let beatLevel: Float = 0.16   // the binaural beat itself
-        let padLevel: Float = 0.11    // warm body so it isn't a bare sine
+        let beatLevel: Float = 0.10   // the binaural beat — kept subtle (it works quiet)
+        let padLevel: Float = 0.13    // warm body dominates so there's no harsh throb
         // Chime partials (G5 / D6 / G6).
         let chimeInc1 = twoPi * 784 / sampleRate
         let chimeInc2 = twoPi * 1176 / sampleRate
@@ -301,26 +306,30 @@ final class BinauralEngine: @unchecked Sendable {
 
             var ambL: Float = 0, ambR: Float = 0
 
-            // 1 — RAIN: distant sheet (per-ear filtered noise) + near droplets.
+            // 1 — RAIN: a soft low-mid "sheet" + many close resonant water ticks.
             if ambLevels[1] > 0 {
                 let lvl = ambLevels[1]
                 let nL = nextNoise(), nR = nextNoise()
-                lpA_L[1] += (nL - lpA_L[1]) * 0.12
-                lpA_R[1] += (nR - lpA_R[1]) * 0.12
-                var l = (nL - lpA_L[1]) * 0.22   // high-passed → airy sheet
-                var r = (nR - lpA_R[1]) * 0.22
-                // Spawn droplets irregularly (~110/sec across the field).
-                if nextUniform() < 0.0026 {
-                    spawn(env: &rainEnv, ph: &rainPh, inc: &rainInc, pan: &rainPan,
-                          amp: 0.18 + nextUniform() * 0.5,
-                          freq: 1400 + Double(nextUniform()) * 2600,
-                          pan01: nextUniform())
-                    // give this voice a random short decay (~10-40 ms)
-                    if let i = lastSpawn { rainDec[i] = 0.9970 + nextUniform() * 0.0025 }
+                // Distant wash: band-passed toward low-mids (not a bright hiss).
+                lpA_L[1] += (nL - lpA_L[1]) * 0.35; lpB_L[1] += (lpA_L[1] - lpB_L[1]) * 0.05
+                lpA_R[1] += (nR - lpA_R[1]) * 0.35; lpB_R[1] += (lpA_R[1] - lpB_R[1]) * 0.05
+                var l = (lpA_L[1] - lpB_L[1]) * 1.5
+                var r = (lpA_R[1] - lpB_R[1]) * 1.5
+                // Spawn frequent droplets across the stereo field.
+                if nextUniform() < 0.0032 {
+                    let i = freeVoice(rainEnv)
+                    rainEnv[i] = 0.5 + nextUniform() * 0.9
+                    rainCut[i] = 0.18 + nextUniform() * 0.45   // splash "pitch"
+                    rainDec[i] = 0.992 + nextUniform() * 0.005 // ~6-25 ms tick
+                    rainPan[i] = nextUniform()
+                    rainBp1[i] = 0; rainBp2[i] = 0
                 }
-                for i in 0..<Self.pool where rainEnv[i] > 0.0004 {
-                    rainPh[i] += rainInc[i]
-                    let s = Float(sin(rainPh[i])) * rainEnv[i]
+                for i in 0..<Self.pool where rainEnv[i] > 0.0006 {
+                    // Excite a band-pass with noise → a watery "tick", not a tone.
+                    let exc = nextNoise() * rainEnv[i]
+                    rainBp1[i] += (exc - rainBp1[i]) * rainCut[i]
+                    rainBp2[i] += (rainBp1[i] - rainBp2[i]) * 0.10
+                    let s = (rainBp1[i] - rainBp2[i]) * 2.6
                     let (gL, gR) = panGains(rainPan[i])
                     l += s * gL; r += s * gR
                     rainEnv[i] *= rainDec[i]
@@ -515,15 +524,20 @@ final class BinauralEngine: @unchecked Sendable {
             }
 
             // Overall trim so stacked layers stay clean.
-            ambL *= 0.55; ambR *= 0.55
+            ambL *= 0.45; ambR *= 0.45
 
-            // Spatial: gentle non-mechanical circling (two orbits) + head yaw.
+            // Gentle high-cut: takes the harsh, fatiguing edge off everything.
+            ambBusLpL += (ambL - ambBusLpL) * 0.55; ambL = ambBusLpL
+            ambBusLpR += (ambR - ambBusLpR) * 0.55; ambR = ambBusLpR
+
+            // Spatial: a subtle, slow sway (two orbits) + head yaw. Kept shallow
+            // so it never feels like the room is spinning around you.
             if depth > 0.001 {
                 rotA += rotIncA; if rotA > twoPi { rotA -= twoPi }
                 rotB += rotIncB; if rotB > twoPi { rotB -= twoPi }
                 let sway = (Float(sin(rotA - Double(yaw))) * 0.7 + Float(sin(rotB)) * 0.3) * depth
-                let gainL = 1 - max(0, sway) * 0.6
-                let gainR = 1 - max(0, -sway) * 0.6
+                let gainL = 1 - max(0, sway) * 0.35
+                let gainR = 1 - max(0, -sway) * 0.35
                 ambL *= gainL; ambR *= gainR
             }
 
