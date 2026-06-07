@@ -1,194 +1,272 @@
 import SwiftUI
 
-/// The main player screen.
-///
-/// Shows artwork, track metadata, a decorative waveform, transport controls and
-/// a chip that opens the preset selector. Audio is wired up in `prepare()` on
-/// appear. Phase 1 keeps playback wiring minimal — the focus is the layout and
-/// the preset surface.
+/// The main player. Album art, a preset pill, the gradient waveform scrubber and
+/// transport controls — all re-themed to the active preset's gradient. The
+/// chevron and pill open the preset selector; the queue icon opens the library.
 struct NowPlayingView: View {
     @State var viewModel: NowPlayingViewModel
     @Environment(PresetStore.self) private var presetStore
+
     @State private var showPresetSelector = false
     @State private var showLibrary = false
+    @State private var shuffle = false
+    @State private var repeatOn = false
+
+    private var preset: Preset { viewModel.activePreset }
 
     var body: some View {
         ZStack {
-            backgroundGradient
+            DesignTokens.Palette.backgroundPrimary.ignoresSafeArea()
+            ambientGlow
 
-            VStack(spacing: DesignTokens.Spacing.l) {
-                header
-                artwork
+            VStack(spacing: 0) {
+                topBar
+                    .padding(.top, 8)
+
+                albumArt
+                    .padding(.top, 22)
+
+                presetPill
+                    .padding(.top, 20)
+
                 trackInfo
-                WaveformView(isAnimating: viewModel.isPlaying)
-                    .frame(height: 96)
-                    .padding(.horizontal, DesignTokens.Spacing.m)
-                progressSection
+                    .padding(.top, 18)
+
+                Spacer(minLength: 8)
+
+                waveformSection
+
                 transportControls
-                Spacer(minLength: 0)
-                presetChip
+                    .padding(.top, 16)
+
+                EQSpectrumView(preset: preset, isPlaying: viewModel.isPlaying)
+                    .frame(height: 72)
+                    .opacity(0.92)
+                    .padding(.top, 14)
+                    .padding(.bottom, 6)
             }
-            .padding(DesignTokens.Spacing.l)
+            .padding(.horizontal, 24)
         }
         .preferredColorScheme(.dark)
         .onAppear { viewModel.prepare() }
         .sheet(isPresented: $showPresetSelector) {
             PresetSelectorView(
-                viewModel: PresetSelectorViewModel(store: presetStore) { preset in
-                    viewModel.apply(preset)
+                viewModel: PresetSelectorViewModel(store: presetStore) { applied in
+                    viewModel.apply(applied)
                 }
             )
         }
         .sheet(isPresented: $showLibrary) {
-            LibraryView(viewModel: LibraryViewModel()) { track in
-                viewModel.load(track)
+            LibraryView(viewModel: LibraryViewModel()) { track, queue in
+                viewModel.play(track, in: queue)
             }
         }
     }
 
-    // MARK: - Sections
+    // MARK: - Background
 
-    private var backgroundGradient: some View {
-        LinearGradient(
-            colors: [
-                DesignTokens.Palette.backgroundPrimary,
-                DesignTokens.Palette.accent.opacity(0.18),
-                DesignTokens.Palette.backgroundPrimary
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
+    private var ambientGlow: some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    colors: [preset.toColor.opacity(0.18), .clear],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 230
+                )
+            )
+            .frame(width: 460, height: 460)
+            .blur(radius: 8)
+            .offset(y: -260)
+            .allowsHitTesting(false)
+            .animation(.easeInOut(duration: 0.5), value: preset.id)
     }
 
-    private var header: some View {
+    // MARK: - Top bar
+
+    private var topBar: some View {
         HStack {
-            Text("SoundStage")
-                .font(DesignTokens.Typography.title)
-                .foregroundStyle(DesignTokens.Palette.textPrimary)
+            iconButton(systemName: "chevron.down", action: { showPresetSelector = true })
+                .accessibilityLabel("Choose preset")
             Spacer()
-            Button {
-                showLibrary = true
-            } label: {
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(DesignTokens.Palette.accent)
+            VStack(spacing: 2) {
+                Text("SPATIAL AUDIO")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .tracking(1.6)
+                    .foregroundStyle(.white.opacity(0.45))
+                Text(albumLine)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
             }
-            .accessibilityLabel("Browse library")
+            Spacer()
+            iconButton(systemName: "list.bullet", action: { showLibrary = true })
+                .accessibilityLabel("Browse library")
         }
+        .frame(height: 44)
     }
 
-    private var artwork: some View {
-        ArtworkView(
-            track: viewModel.currentTrack,
-            cornerRadius: DesignTokens.Radius.card,
-            placeholderIconSize: 64
-        )
-        .aspectRatio(1, contentMode: .fit)
-        .frame(maxWidth: 320)
+    private var albumLine: String {
+        viewModel.currentTrack.albumTitle.isEmpty ? "SoundStage" : viewModel.currentTrack.albumTitle
     }
 
-    private var progressSection: some View {
-        VStack(spacing: DesignTokens.Spacing.xs) {
-            Slider(value: scrubBinding, in: 0...1) { editing in
-                if editing {
-                    viewModel.beginSeeking()
-                } else {
-                    viewModel.endSeeking()
-                }
+    private func iconButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ScaleButtonStyle(pressedScale: 0.9))
+    }
+
+    // MARK: - Album art
+
+    private var albumArt: some View {
+        ArtworkView(track: viewModel.currentTrack, cornerRadius: 18, placeholderIconSize: 64)
+            .frame(maxWidth: 286)
+            .aspectRatio(1, contentMode: .fit)
+            .shadow(color: preset.toColor.opacity(0.45), radius: 44, y: 24)
+            .shadow(color: .black.opacity(0.55), radius: 30, y: 8)
+            .animation(.easeInOut(duration: 0.5), value: preset.id)
+    }
+
+    // MARK: - Preset pill
+
+    private var presetPill: some View {
+        Button { showPresetSelector = true } label: {
+            HStack(spacing: 8) {
+                SpatialIcon(color: .white)
+                    .frame(width: 16, height: 16)
+                Text(preset.label)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                Rectangle()
+                    .fill(.white.opacity(0.35))
+                    .frame(width: 1, height: 14)
+                    .padding(.horizontal, 2)
+                Text("Change")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
             }
-            .tint(DesignTokens.Palette.accent)
-            .disabled(viewModel.duration <= 0)
+            .padding(.vertical, 8)
+            .padding(.leading, 12)
+            .padding(.trailing, 16)
+            .background(Capsule().fill(preset.gradient()))
+            .shadow(color: preset.toColor.opacity(0.4), radius: 12, y: 4)
+        }
+        .buttonStyle(ScaleButtonStyle(pressedScale: 0.95))
+        .accessibilityLabel("Preset: \(preset.label). Change")
+    }
+
+    // MARK: - Track info
+
+    private var trackInfo: some View {
+        VStack(spacing: 5) {
+            Text(viewModel.currentTrack.title)
+                .font(.system(size: 25, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Text(viewModel.currentTrack.artist)
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.4))
+                .lineLimit(1)
+        }
+        .multilineTextAlignment(.center)
+    }
+
+    // MARK: - Waveform
+
+    private var waveformSection: some View {
+        VStack(spacing: 8) {
+            WaveformView(
+                preset: preset,
+                progress: viewModel.progress,
+                isPlaying: viewModel.isPlaying,
+                onScrub: { fraction in
+                    viewModel.beginSeeking()
+                    viewModel.scrub(toFraction: fraction)
+                },
+                onScrubEnded: { viewModel.endSeeking() }
+            )
+            .frame(height: 56)
 
             HStack {
                 Text(timeString(viewModel.elapsed))
                 Spacer()
-                Text(timeString(viewModel.duration))
+                Text("-\(timeString(max(0, viewModel.duration - viewModel.elapsed)))")
             }
-            .font(DesignTokens.Typography.caption)
-            .foregroundStyle(DesignTokens.Palette.textSecondary)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.4))
             .monospacedDigit()
         }
-        .padding(.horizontal, DesignTokens.Spacing.m)
     }
 
-    private var scrubBinding: Binding<Double> {
-        Binding(
-            get: { viewModel.progress },
-            set: { viewModel.scrub(toFraction: $0) }
-        )
+    // MARK: - Transport
+
+    private var transportControls: some View {
+        HStack {
+            ctrlButton(systemName: "shuffle", size: 20,
+                       color: shuffle ? preset.toColor : .white.opacity(0.7),
+                       diameter: 44) { shuffle.toggle() }
+                .accessibilityLabel("Shuffle")
+
+            Spacer()
+
+            ctrlButton(systemName: "backward.fill", size: 24,
+                       color: viewModel.canGoPrevious ? .white : .white.opacity(0.35),
+                       diameter: 50, enabled: viewModel.canGoPrevious) { viewModel.previous() }
+                .accessibilityLabel("Previous")
+
+            Spacer()
+
+            Button { viewModel.togglePlayback() } label: {
+                ZStack {
+                    Circle()
+                        .fill(preset.gradient())
+                        .frame(width: 68, height: 68)
+                        .shadow(color: preset.toColor.opacity(0.5), radius: 22, y: 8)
+                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundStyle(.white)
+                }
+            }
+            .buttonStyle(ScaleButtonStyle(pressedScale: 0.92))
+            .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
+
+            Spacer()
+
+            ctrlButton(systemName: "forward.fill", size: 24,
+                       color: viewModel.canGoNext ? .white : .white.opacity(0.35),
+                       diameter: 50, enabled: viewModel.canGoNext) { viewModel.next() }
+                .accessibilityLabel("Next")
+
+            Spacer()
+
+            ctrlButton(systemName: "repeat", size: 20,
+                       color: repeatOn ? preset.toColor : .white.opacity(0.7),
+                       diameter: 44) { repeatOn.toggle() }
+                .accessibilityLabel("Repeat")
+        }
+    }
+
+    private func ctrlButton(systemName: String, size: CGFloat, color: Color, diameter: CGFloat, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: size, weight: .medium))
+                .foregroundStyle(color)
+                .frame(width: diameter, height: diameter)
+                .contentShape(Circle())
+        }
+        .buttonStyle(ScaleButtonStyle(pressedScale: 0.9))
+        .disabled(!enabled)
     }
 
     private func timeString(_ time: TimeInterval) -> String {
         guard time.isFinite, time > 0 else { return "0:00" }
         let total = Int(time.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
-    }
-
-    private var trackInfo: some View {
-        VStack(spacing: DesignTokens.Spacing.xs) {
-            Text(viewModel.currentTrack.title)
-                .font(DesignTokens.Typography.headline)
-                .foregroundStyle(DesignTokens.Palette.textPrimary)
-                .lineLimit(1)
-            Text(viewModel.currentTrack.artist)
-                .font(DesignTokens.Typography.body)
-                .foregroundStyle(DesignTokens.Palette.textSecondary)
-                .lineLimit(1)
-        }
-    }
-
-    private var transportControls: some View {
-        HStack(spacing: DesignTokens.Spacing.xl) {
-            transportButton(systemName: "backward.fill", size: 28) {}
-            Button(action: viewModel.togglePlayback) {
-                Image(systemName: viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 72))
-                    .foregroundStyle(DesignTokens.Palette.accent)
-            }
-            .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
-            transportButton(systemName: "forward.fill", size: 28) {}
-        }
-    }
-
-    private func transportButton(systemName: String, size: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: size))
-                .foregroundStyle(DesignTokens.Palette.textPrimary)
-        }
-    }
-
-    private var presetChip: some View {
-        Button {
-            showPresetSelector = true
-        } label: {
-            HStack(spacing: DesignTokens.Spacing.s) {
-                Image(systemName: "slider.horizontal.3")
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Preset")
-                        .font(DesignTokens.Typography.caption)
-                        .foregroundStyle(DesignTokens.Palette.textSecondary)
-                    Text(viewModel.activePreset.label)
-                        .font(DesignTokens.Typography.headline)
-                        .foregroundStyle(DesignTokens.Palette.textPrimary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(DesignTokens.Palette.textSecondary)
-            }
-            .padding(DesignTokens.Spacing.m)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.control, style: .continuous)
-                    .fill(DesignTokens.Palette.cardSurface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.control, style: .continuous)
-                    .stroke(DesignTokens.Palette.cardStroke, lineWidth: 1)
-            )
-            .foregroundStyle(DesignTokens.Palette.accent)
-        }
-        .buttonStyle(.plain)
     }
 }
 

@@ -1,12 +1,12 @@
 import Foundation
 import Observation
 
-/// Drives the preset picker screen.
+/// Drives the preset picker.
 ///
-/// Reads the catalog from `PresetStore`, tracks the highlighted selection and
-/// writes the choice back through the store (which persists it). Applying the
-/// preset to the audio graph is the player's responsibility, surfaced here via
-/// the `onApply` callback so this view model stays UI-only.
+/// Reads the catalog from `PresetStore`, tracks the active selection and
+/// commits a chosen (possibly tweaked) preset back through the store, which
+/// persists it. Applying to the audio graph is surfaced via `onApply` so this
+/// view model stays UI-only.
 @MainActor
 @Observable
 final class PresetSelectorViewModel {
@@ -16,7 +16,7 @@ final class PresetSelectorViewModel {
 
     private let store: PresetStore
 
-    /// Invoked when the user commits a preset, so the owner can apply it to audio.
+    /// Invoked when the user enters a space, so the owner can apply it to audio.
     var onApply: ((Preset) -> Void)?
 
     init(store: PresetStore, onApply: ((Preset) -> Void)? = nil) {
@@ -30,7 +30,8 @@ final class PresetSelectorViewModel {
         preset.id == selectedID
     }
 
-    func select(_ preset: Preset) {
+    /// Commits a preset (with any detail-sheet tweaks) as the active space.
+    func activate(_ preset: Preset) {
         selectedID = preset.id
         store.select(preset)
         onApply?(preset)

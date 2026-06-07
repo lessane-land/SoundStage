@@ -9,20 +9,22 @@ enum DesignTokens {
     // MARK: Colors
 
     enum Palette {
-        /// #0A0A0F — the near-black app background.
-        static let backgroundPrimary = Color(hex: 0x0A0A0F)
-        /// #6C5CE7 — primary brand accent (violet).
+        /// #08080F — the near-black app background.
+        static let backgroundPrimary = Color(hex: 0x08080F)
+        /// #0B0B14 — elevated surface (full-screen detail).
+        static let backgroundElevated = Color(hex: 0x0B0B14)
+        /// #141420 — solid card fill.
+        static let cardFill = Color(hex: 0x141420)
+        /// #6C5CE7 — incidental brand accent (the live theme is preset-driven).
         static let accent = Color(hex: 0x6C5CE7)
-        /// #FDCB6E — amber, used to mark the active / selected state.
-        static let active = Color(hex: 0xFDCB6E)
         /// #FFFFFF — primary text.
         static let textPrimary = Color.white
-        /// #8A8A9A — secondary / muted text.
-        static let textSecondary = Color(hex: 0x8A8A9A)
+        /// Secondary / muted text (white @ 40%).
+        static let textSecondary = Color.white.opacity(0.40)
         /// rgba(255,255,255,0.06) — frosted card surface.
         static let cardSurface = Color.white.opacity(0.06)
-        /// Hairline stroke that gives glass cards their edge.
-        static let cardStroke = Color.white.opacity(0.10)
+        /// Hairline stroke that gives cards their edge (white @ 7%).
+        static let cardStroke = Color.white.opacity(0.07)
     }
 
     // MARK: Spacing (8pt grid)
@@ -62,5 +64,16 @@ extension Color {
         let green = Double((hex >> 8) & 0xFF) / 255.0
         let blue = Double(hex & 0xFF) / 255.0
         self.init(.sRGB, red: red, green: green, blue: blue, opacity: opacity)
+    }
+
+    /// Linearly interpolate between two 24-bit RGB literals (`t` in 0...1).
+    static func lerp(_ a: UInt32, _ b: UInt32, _ t: Double) -> Color {
+        let clamped = min(max(t, 0), 1)
+        func channel(_ shift: UInt32) -> Double {
+            let ca = Double((a >> shift) & 0xFF)
+            let cb = Double((b >> shift) & 0xFF)
+            return (ca + (cb - ca) * clamped) / 255.0
+        }
+        return Color(.sRGB, red: channel(16), green: channel(8), blue: channel(0), opacity: 1)
     }
 }

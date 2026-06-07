@@ -7,7 +7,9 @@ import SwiftUI
 /// via `onSelect` and dismisses.
 struct LibraryView: View {
     @State var viewModel: LibraryViewModel
-    let onSelect: (Track) -> Void
+    /// Hands back the chosen track plus the list it was chosen from, so the
+    /// player can build a queue for prev/next.
+    let onSelect: (Track, [Track]) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -54,7 +56,7 @@ struct LibraryView: View {
         List {
             ForEach(viewModel.visibleTracks) { track in
                 Button {
-                    onSelect(track)
+                    onSelect(track, viewModel.visibleTracks)
                     dismiss()
                 } label: {
                     TrackRow(track: track)
@@ -133,6 +135,6 @@ private struct TrackRow: View {
 }
 
 #Preview {
-    LibraryView(viewModel: LibraryViewModel()) { _ in }
+    LibraryView(viewModel: LibraryViewModel()) { _, _ in }
         .environment(ArtworkLoader())
 }

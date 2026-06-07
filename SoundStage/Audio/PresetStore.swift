@@ -51,7 +51,7 @@ final class PresetStore {
             Preset(
                 id: "club",
                 label: "Club",
-                description: "Tight low end and a close, energetic room.",
+                description: "Intimate basement, 400 capacity",
                 reverbPreset: .largeRoom,
                 reverbBlend: 0.32,
                 eqBands: [
@@ -60,12 +60,16 @@ final class PresetStore {
                     EQBand(frequency: 2_000, gain: 1.5, bandwidth: 1.0),
                     EQBand(frequency: 8_000, gain: 3.0, bandwidth: 1.2, filterType: .highShelf)
                 ],
-                roomSize: 0.7
+                roomSize: 0.62,
+                stereoWidth: 0.6,
+                gradientFromHex: 0x00D2FF,
+                gradientToHex: 0x0066FF,
+                shape: .arcs
             ),
             Preset(
                 id: "warehouse-berlin",
                 label: "Warehouse Berlin",
-                description: "Cavernous concrete with a long, dark tail.",
+                description: "Industrial concrete, 3000 cap.",
                 reverbPreset: .largeHall2,
                 reverbBlend: 0.5,
                 eqBands: [
@@ -74,12 +78,16 @@ final class PresetStore {
                     EQBand(frequency: 3_500, gain: -1.5, bandwidth: 1.0),
                     EQBand(frequency: 10_000, gain: -2.0, bandwidth: 1.2, filterType: .highShelf)
                 ],
-                roomSize: 0.92
+                roomSize: 0.92,
+                stereoWidth: 0.8,
+                gradientFromHex: 0x00E676,
+                gradientToHex: 0xA8FF3E,
+                shape: .angular
             ),
             Preset(
                 id: "festival-outdoor",
                 label: "Festival Outdoor",
-                description: "Wide open air with a distant main-stage spread.",
+                description: "Open-air mainstage, 50k crowd",
                 reverbPreset: .largeChamber,
                 reverbBlend: 0.4,
                 eqBands: [
@@ -88,12 +96,16 @@ final class PresetStore {
                     EQBand(frequency: 5_000, gain: 2.0, bandwidth: 1.0),
                     EQBand(frequency: 12_000, gain: 2.5, bandwidth: 1.2, filterType: .highShelf)
                 ],
-                roomSize: 1.0
+                roomSize: 1.0,
+                stereoWidth: 0.9,
+                gradientFromHex: 0xFF2D55,
+                gradientToHex: 0xFF5E3A,
+                shape: .layers
             ),
             Preset(
                 id: "headphone-journey",
                 label: "Headphone Journey",
-                description: "Smooth, wide and intimate for late-night listening.",
+                description: "Binaural close-field intimacy",
                 reverbPreset: .plate,
                 reverbBlend: 0.24,
                 eqBands: [
@@ -102,12 +114,16 @@ final class PresetStore {
                     EQBand(frequency: 4_000, gain: 1.0, bandwidth: 1.0),
                     EQBand(frequency: 11_000, gain: 1.5, bandwidth: 1.1, filterType: .highShelf)
                 ],
-                roomSize: 0.4
+                roomSize: 0.4,
+                stereoWidth: 1.0,
+                gradientFromHex: 0x13C57A,
+                gradientToHex: 0x7BFF5E,
+                shape: .curves
             ),
             Preset(
                 id: "focus",
                 label: "Focus",
-                description: "Dry and neutral. Stays out of the way.",
+                description: "Dry, controlled, zero distraction",
                 reverbPreset: .smallRoom,
                 reverbBlend: 0.08,
                 eqBands: [
@@ -115,12 +131,16 @@ final class PresetStore {
                     EQBand(frequency: 1_500, gain: 1.0, bandwidth: 1.2),
                     EQBand(frequency: 6_000, gain: 0.5, bandwidth: 1.0, filterType: .highShelf)
                 ],
-                roomSize: 0.2
+                roomSize: 0.2,
+                stereoWidth: 0.35,
+                gradientFromHex: 0x3D8BFF,
+                gradientToHex: 0x7A8EFF,
+                shape: .grid
             ),
             Preset(
                 id: "running",
                 label: "Running",
-                description: "Punchy and forward to push the pace.",
+                description: "Punchy, forward, high energy",
                 reverbPreset: .mediumRoom,
                 reverbBlend: 0.14,
                 eqBands: [
@@ -129,7 +149,11 @@ final class PresetStore {
                     EQBand(frequency: 3_000, gain: 2.5, bandwidth: 1.0),
                     EQBand(frequency: 9_000, gain: 2.0, bandwidth: 1.1, filterType: .highShelf)
                 ],
-                roomSize: 0.3
+                roomSize: 0.3,
+                stereoWidth: 0.55,
+                gradientFromHex: 0xFF1F3D,
+                gradientToHex: 0xFF7A45,
+                shape: .pulse
             )
         ]
     }

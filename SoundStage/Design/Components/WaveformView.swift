@@ -1,70 +1,86 @@
 import SwiftUI
 
-/// A stylized bar waveform for the now-playing screen.
-///
-/// Phase 1 renders a deterministic, decorative pattern (no real sample
-/// analysis yet). When `isAnimating` is true the bars breathe gently to signal
-/// active playback. A future phase can drive `samples` from a real tap.
+/// The waveform scrubber: vertical bars where the played region is washed in
+/// the preset gradient and the unplayed region is white @ 15%. A live ripple
+/// breathes near the playhead while playing. Dragging scrubs.
 struct WaveformView: View {
-    var samples: [CGFloat]
-    var isAnimating: Bool
-
-    @State private var phase: CGFloat = 0
-
-    init(samples: [CGFloat]? = nil, isAnimating: Bool = false) {
-        self.samples = samples ?? WaveformView.defaultSamples
-        self.isAnimating = isAnimating
-    }
+    let preset: Preset
+    var progress: Double
+    var isPlaying: Bool
+    var onScrub: ((Double) -> Void)?
+    var onScrubEnded: (() -> Void)?
 
     var body: some View {
         GeometryReader { proxy in
-            let count = samples.count
-            let spacing = DesignTokens.Spacing.xs
-            let barWidth = max(2, (proxy.size.width - spacing * CGFloat(count - 1)) / CGFloat(count))
-
-            HStack(alignment: .center, spacing: spacing) {
-                ForEach(Array(samples.enumerated()), id: \.offset) { index, sample in
-                    Capsule()
-                        .fill(barColor(for: index, count: count))
-                        .frame(width: barWidth, height: height(for: sample))
+            TimelineView(.animation(paused: !isPlaying)) { timeline in
+                Canvas { context, size in
+                    draw(context: context, size: size,
+                         time: timeline.date.timeIntervalSinceReferenceDate)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let fraction = min(max(0, value.location.x / proxy.size.width), 1)
+                        onScrub?(fraction)
+                    }
+                    .onEnded { _ in onScrubEnded?() }
+            )
         }
-        .onAppear { if isAnimating { startAnimating() } }
-        .onChange(of: isAnimating) { _, newValue in
-            if newValue { startAnimating() }
+        .accessibilityElement()
+        .accessibilityLabel("Playback position")
+        .accessibilityValue("\(Int(progress * 100)) percent")
+    }
+
+    private func draw(context: GraphicsContext, size: CGSize, time: TimeInterval) {
+        let count = Self.bars.count
+        let slot = size.width / CGFloat(count)
+        let barWidth = min(3.5, slot - 2)
+        let playIndex = progress * Double(count)
+
+        for (index, base) in Self.bars.enumerated() {
+            let distance = abs(Double(index) - playIndex)
+            let ripple = isPlaying ? max(0, 1 - distance / 5) * 0.22 * (0.5 + 0.5 * sin(time * 6 - Double(index) * 0.5)) : 0
+            let breathe = isPlaying ? 0.04 * sin(time * 2.2 + Double(index) * 0.4) : 0
+            let height = CGFloat(min(1, max(0.1, base + ripple + breathe))) * size.height
+
+            let x = slot * CGFloat(index) + slot / 2
+            let rect = CGRect(x: x - barWidth / 2, y: (size.height - height) / 2, width: barWidth, height: height)
+            let bar = Path(roundedRect: rect, cornerRadius: 3)
+
+            let played = Double(index) <= playIndex
+            let color = played
+                ? preset.color(atFraction: Double(index) / Double(count - 1))
+                : Color.white.opacity(0.15)
+            context.fill(bar, with: .color(color))
         }
-        .accessibilityHidden(true)
+
+        // Playhead.
+        let headX = CGFloat(progress) * size.width
+        let head = Path(roundedRect: CGRect(x: headX - 1, y: -3, width: 2, height: size.height + 6), cornerRadius: 1)
+        context.fill(head, with: .color(.white))
     }
 
-    private func height(for sample: CGFloat) -> CGFloat {
-        let base: CGFloat = 12
-        let span: CGFloat = 64
-        let wobble = isAnimating ? (sin(phase + sample * 6) + 1) / 2 * 0.35 : 0
-        return base + span * (sample * (0.65 + wobble))
-    }
-
-    private func barColor(for index: Int, count: Int) -> Color {
-        let t = Double(index) / Double(max(1, count - 1))
-        return DesignTokens.Palette.accent.opacity(0.55 + 0.45 * (1 - abs(t - 0.5) * 2))
-    }
-
-    private func startAnimating() {
-        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
-            phase = .pi * 2
+    /// Stable seeded bar profile (matches the design's `makeBars(58, 4821)`).
+    static let bars: [Double] = {
+        var state = 4821
+        func rnd() -> Double {
+            state = (state * 9301 + 49297) % 233280
+            return Double(state) / 233280
         }
-    }
-
-    static let defaultSamples: [CGFloat] = [
-        0.2, 0.45, 0.7, 0.5, 0.85, 0.6, 0.95, 0.55, 0.75, 0.4,
-        0.6, 0.9, 0.5, 0.7, 0.35, 0.8, 0.5, 0.65, 0.3, 0.55
-    ]
+        var out: [Double] = []
+        for i in 0..<58 {
+            let env = 0.42 + 0.34 * sin(Double(i) * 0.22) + 0.20 * sin(Double(i) * 0.07 + 1.7)
+            out.append(max(0.12, min(1, env * (0.7 + rnd() * 0.6))))
+        }
+        return out
+    }()
 }
 
 #Preview {
-    WaveformView(isAnimating: true)
-        .frame(height: 120)
+    WaveformView(preset: PresetStore().presets[2], progress: 0.34, isPlaying: true, onScrub: { _ in })
+        .frame(height: 56)
         .padding()
         .background(DesignTokens.Palette.backgroundPrimary)
 }

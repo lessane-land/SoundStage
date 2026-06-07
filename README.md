@@ -51,16 +51,32 @@ Each `Preset` carries a reverb voicing + blend, a parametric EQ shape
 ```
 SoundStage/
   App/                 SoundStageApp.swift — entry point
-  Audio/               AudioEngine, Preset, PresetStore
-  Library/             LibraryService, Track
+  Audio/               AudioEngine, Preset (+ PresetShape), PresetStore
+  Library/             LibraryService, Track, ArtworkLoader
   Features/
     NowPlaying/        player screen + view model
-    PresetSelector/    preset picker, cards + view model
+    PresetSelector/    selector sheet, glyph cards, detail editor + view model
+    Library/           library browser + view model
   Design/
     DesignTokens.swift colors, typography, spacing
-    Components/        WaveformView, EQCurveView
+    Preset+Style.swift per-preset gradient / color styling
+    Components/        ArtworkView, WaveformView, EQSpectrumView, MiniEQView,
+                       PresetGlyph, SpatialIcon, GradientSlider, ScaleButtonStyle
   Resources/           Assets.xcassets
 ```
+
+### Screens
+
+- **Now Playing** — album art, a preset pill, the gradient waveform scrubber,
+  transport controls and a live EQ spectrum. The whole screen re-themes to the
+  active preset's gradient.
+- **Preset Selector** — a "Choose your space" bottom sheet with a 2-column grid
+  of geometric glyph cards.
+- **Preset Detail** — a full-screen editor with a gradient header, Room Size /
+  Reverb Depth / Stereo Width sliders and a Frequency Shape preview.
+
+Each preset owns a gradient identity (`gradientFromHex` / `gradientToHex`) and a
+geometric `shape` drawn by `PresetGlyph`.
 
 ## Presets (Phase 1)
 

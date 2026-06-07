@@ -22,6 +22,10 @@ final class NowPlayingViewModel {
     /// True while the user is dragging the scrubber, which pauses ticker updates.
     private(set) var isSeeking = false
 
+    /// The current play queue and the index of the playing track within it.
+    private(set) var queue: [Track] = []
+    private(set) var queueIndex = 0
+
     private let presetStore: PresetStore
     private let engine: AudioEngine
     private var ticker: Task<Void, Never>?
@@ -37,6 +41,9 @@ final class NowPlayingViewModel {
     var progress: Double {
         duration > 0 ? min(1, elapsed / duration) : 0
     }
+
+    var canGoNext: Bool { queueIndex + 1 < queue.count }
+    var canGoPrevious: Bool { !queue.isEmpty }
 
     /// Wires up the engine, applies the persisted preset and starts the ticker.
     func prepare() {
@@ -55,6 +62,14 @@ final class NowPlayingViewModel {
         }
     }
 
+    /// Starts playing `track` within the context of `tracks` so prev/next can
+    /// move through the surrounding list.
+    func play(_ track: Track, in tracks: [Track]) {
+        queue = tracks
+        queueIndex = tracks.firstIndex(of: track) ?? 0
+        load(track)
+    }
+
     func load(_ track: Track, autoPlay: Bool = true) {
         currentTrack = track
         isPlaying = false
@@ -63,6 +78,25 @@ final class NowPlayingViewModel {
         duration = engine.duration
         if autoPlay {
             togglePlayback()
+        }
+    }
+
+    func next() {
+        guard canGoNext else { return }
+        queueIndex += 1
+        load(queue[queueIndex])
+    }
+
+    /// Restarts the current track if we're past the first few seconds,
+    /// otherwise steps to the previous track.
+    func previous() {
+        guard !queue.isEmpty else { return }
+        if elapsed > 3 || queueIndex == 0 {
+            elapsed = 0
+            engine.seek(to: 0)
+        } else {
+            queueIndex -= 1
+            load(queue[queueIndex])
         }
     }
 
@@ -107,11 +141,15 @@ final class NowPlayingViewModel {
         duration = engine.duration
         if isPlaying {
             elapsed = engine.currentTime
-            // Stop at the end of the track.
+            // At the end of the track, advance to the next one or stop.
             if duration > 0, elapsed >= duration - 0.05 {
-                elapsed = duration
-                isPlaying = false
-                engine.pause()
+                if canGoNext {
+                    next()
+                } else {
+                    elapsed = duration
+                    isPlaying = false
+                    engine.pause()
+                }
             }
         }
     }

@@ -25,16 +25,29 @@ struct EQBand: Equatable, Sendable {
     }
 }
 
+/// The geometric identity drawn for each preset (see `PresetGlyph`).
+enum PresetShape: Equatable, Sendable {
+    case arcs       // Club — concentric arcs radiating
+    case angular    // Warehouse — hard angular concrete lines
+    case layers     // Festival — horizontal stacked layers
+    case curves     // Headphone Journey — flowing intertwined curves
+    case grid       // Focus — precise controlled grid
+    case pulse      // Running — punchy forward chevrons
+}
+
 /// An acoustic environment the user can apply to playback.
 ///
-/// A preset is pure data: it describes the reverb character, EQ shape and a
-/// perceptual "room size". `AudioEngine` translates it into live node state.
-/// `id` is a stable string slug so the user's selection survives relaunch.
+/// A preset is pure data: it describes the reverb character, EQ shape, a
+/// perceptual "room size" and stereo width, plus a visual identity (a gradient
+/// and a geometric shape) that the whole UI re-themes to. `AudioEngine`
+/// translates the audio fields into live node state. `id` is a stable string
+/// slug so the user's selection survives relaunch.
 struct Preset: Identifiable, Equatable, Sendable {
     let id: String
     var label: String
     var description: String
 
+    // Audio
     /// Factory reverb voicing.
     var reverbPreset: AVAudioUnitReverbPreset
     /// Wet/dry mix expressed 0.0...1.0 (mapped to 0...100 on the reverb node).
@@ -43,4 +56,14 @@ struct Preset: Identifiable, Equatable, Sendable {
     var eqBands: [EQBand]
     /// Perceptual room size 0.0...1.0, drives the environment node's reverb.
     var roomSize: Float
+    /// Stereo spread 0.0...1.0 used by the spatial environment / detail editor.
+    var stereoWidth: Float
+
+    // Visual identity
+    /// Gradient start color (0xRRGGBB).
+    var gradientFromHex: UInt32
+    /// Gradient end color (0xRRGGBB).
+    var gradientToHex: UInt32
+    /// Geometric glyph drawn on cards and the detail header.
+    var shape: PresetShape
 }
