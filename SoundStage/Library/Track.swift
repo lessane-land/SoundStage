@@ -2,18 +2,18 @@ import Foundation
 
 /// Where a track comes from, which decides how it's played.
 enum TrackOrigin: Equatable, Sendable {
-    /// Local, non-DRM file played through `AudioEngine` (spatial presets apply).
+    /// Local, non-DRM file streamed through `AudioEngine` (spatial presets apply).
     case local
-    /// Apple Music catalog/library item played via `ApplicationMusicPlayer`
-    /// (Apple's DRM prevents the presets from processing the audio).
+    /// Protected / Apple Music / cloud library item played by the system player
+    /// (`MPMusicPlayerController`); Apple's DRM means the presets can't process it.
     case appleMusic
 }
 
 /// A playable item, either a local library asset or an Apple Music song.
 ///
 /// A plain `Sendable` value. For `.local` tracks `assetURL` is the file the
-/// audio engine decodes; for `.appleMusic` tracks `appleMusicID` is the catalog
-/// id used by `ApplicationMusicPlayer`.
+/// audio engine decodes; for `.appleMusic` tracks `playbackID` is the
+/// media-library id the system player uses.
 struct Track: Identifiable, Equatable, Sendable {
     let id: String
     let title: String
@@ -26,17 +26,17 @@ struct Track: Identifiable, Equatable, Sendable {
     /// plain `UInt64` so `Track` stays free of MediaPlayer types and `Sendable`.
     let artworkID: UInt64?
 
-    /// Whether the track can actually be played. Local: has a non-DRM asset.
-    /// Apple Music: always true (played via the system player).
+    /// Whether the track can be played at all (false only for the placeholder /
+    /// items with no usable asset on any player).
     let isPlayable: Bool
 
     /// Where the track comes from / how it's played.
     var origin: TrackOrigin = .local
 
-    /// Apple Music catalog id, for `.appleMusic` tracks.
-    var appleMusicID: String? = nil
+    /// Media-library persistent id used by the system player (`.appleMusic`).
+    var playbackID: UInt64? = nil
 
-    /// Remote artwork URL (Apple Music), loaded by `ArtworkView` when present.
+    /// Remote artwork URL, loaded by `ArtworkView` when present.
     var artworkURL: URL? = nil
 
     /// `mm:ss` formatted duration for display.

@@ -6,7 +6,6 @@ import SwiftUI
 struct NowPlayingView: View {
     @State var viewModel: NowPlayingViewModel
     @Environment(PresetStore.self) private var presetStore
-    @Environment(AppleMusicService.self) private var appleMusic
 
     @State private var showPresetSelector = false
     @State private var showLibrary = false
@@ -65,7 +64,7 @@ struct NowPlayingView: View {
             )
         }
         .sheet(isPresented: $showLibrary) {
-            LibraryView(viewModel: LibraryViewModel(appleMusic: appleMusic)) { track, queue in
+            LibraryView(viewModel: LibraryViewModel()) { track, queue in
                 viewModel.play(track, in: queue)
             }
         }
@@ -303,5 +302,4 @@ struct NowPlayingView: View {
     NowPlayingView(viewModel: NowPlayingViewModel(presetStore: store))
         .environment(store)
         .environment(ArtworkLoader())
-        .environment(AppleMusicService())
 }

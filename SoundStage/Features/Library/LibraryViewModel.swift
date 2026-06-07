@@ -1,9 +1,10 @@
 import Foundation
 import Observation
 
-/// Drives the library browser across two sources: local files (played with
-/// spatial presets) and Apple Music (played via the system player). Owns the
-/// authorization + fetch state machine and in-memory search filtering.
+/// Drives the library browser. Loads songs from the local media library; each
+/// track is tagged `.local` (effects engine) or `.appleMusic` (system player),
+/// and all are playable. Owns the authorization/fetch state machine and
+/// in-memory search filtering.
 @MainActor
 @Observable
 final class LibraryViewModel {
@@ -17,30 +18,15 @@ final class LibraryViewModel {
         case empty
     }
 
-    enum Source: String, CaseIterable, Identifiable {
-        case onDevice = "On Device"
-        case appleMusic = "Apple Music"
-        var id: String { rawValue }
-    }
-
     private(set) var state: State = .idle
     private(set) var tracks: [Track] = []
     var searchText = ""
 
-    var source: Source = .onDevice {
-        didSet { if oldValue != source { reloadForSourceChange() } }
+    private let service: LibraryProviding
+
+    init(service: LibraryProviding = LibraryService()) {
+        self.service = service
     }
-
-    private let localService: LibraryProviding
-    private let appleMusic: AppleMusicService?
-
-    init(service: LibraryProviding = LibraryService(), appleMusic: AppleMusicService? = nil) {
-        self.localService = service
-        self.appleMusic = appleMusic
-    }
-
-    /// Whether the Apple Music source is available to switch to.
-    var hasAppleMusic: Bool { appleMusic != nil }
 
     /// The currently visible, playable tracks — used to seed the play queue.
     var playableTracks: [Track] {
@@ -59,9 +45,18 @@ final class LibraryViewModel {
 
     func loadIfNeeded() async {
         guard state == .idle || state == .accessDenied else { return }
-        switch source {
-        case .onDevice: await loadLocal()
-        case .appleMusic: await loadAppleMusic()
+        switch service.authorizationStatus {
+        case .authorized:
+            await load()
+        case .denied, .restricted:
+            state = .accessDenied
+        case .notDetermined:
+            state = .requestingAccess
+            if await service.requestAuthorization() == .authorized {
+                await load()
+            } else {
+                state = .accessDenied
+            }
         }
     }
 
@@ -71,66 +66,10 @@ final class LibraryViewModel {
         await loadIfNeeded()
     }
 
-    private func reloadForSourceChange() {
-        state = .idle
-        tracks = []
-        searchText = ""
-        Task { await loadIfNeeded() }
-    }
-
-    // MARK: - Local
-
-    private func loadLocal() async {
-        switch localService.authorizationStatus {
-        case .authorized:
-            await fetchLocal()
-        case .denied, .restricted:
-            state = .accessDenied
-        case .notDetermined:
-            state = .requestingAccess
-            if await localService.requestAuthorization() == .authorized {
-                await fetchLocal()
-            } else {
-                state = .accessDenied
-            }
-        }
-    }
-
-    private func fetchLocal() async {
+    private func load() async {
         state = .loading
-        let fetched = await localService.fetchSongs()
+        let fetched = await service.fetchSongs()
         tracks = fetched
         state = fetched.isEmpty ? .empty : .loaded
-    }
-
-    // MARK: - Apple Music
-
-    private func loadAppleMusic() async {
-        guard let appleMusic else { state = .accessDenied; return }
-        switch appleMusic.authorizationStatus {
-        case .authorized:
-            await fetchAppleMusic()
-        case .denied, .restricted:
-            state = .accessDenied
-        case .notDetermined:
-            state = .requestingAccess
-            if await appleMusic.requestAuthorization() == .authorized {
-                await fetchAppleMusic()
-            } else {
-                state = .accessDenied
-            }
-        }
-    }
-
-    private func fetchAppleMusic() async {
-        guard let appleMusic else { state = .accessDenied; return }
-        state = .loading
-        do {
-            let fetched = try await appleMusic.libraryTracks()
-            tracks = fetched
-            state = fetched.isEmpty ? .empty : .loaded
-        } catch {
-            state = .empty
-        }
     }
 }

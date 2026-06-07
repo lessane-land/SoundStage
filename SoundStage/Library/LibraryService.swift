@@ -41,8 +41,10 @@ final class LibraryService: LibraryProviding {
         return Self.map(raw)
     }
 
-    /// Fetches all songs in the library, mapped to `Track` values. Each track is
-    /// flagged `isPlayable` based on whether it has a local, non-DRM asset.
+    /// Fetches all songs in the library, mapped to `Track` values. Tracks with a
+    /// local non-DRM asset are tagged `.local` (effects engine); everything else
+    /// (protected / Apple Music / cloud) is `.appleMusic`, played by the system
+    /// player.
     func fetchSongs() async -> [Track] {
         let query = MPMediaQuery.songs()
         guard let items = query.items else { return [] }
@@ -52,9 +54,8 @@ final class LibraryService: LibraryProviding {
     // MARK: - Mapping
 
     private static func track(from item: MPMediaItem) -> Track {
-        // Apple Music / DRM downloads have an assetURL but can't be decoded by
-        // AVAssetReader; cloud-only items have no local asset at all.
-        let isPlayable = item.assetURL != nil
+        // Engine-playable only if there's a local, non-DRM asset to decode.
+        let enginePlayable = item.assetURL != nil
             && !item.hasProtectedAsset
             && !item.isCloudItem
 
@@ -66,7 +67,9 @@ final class LibraryService: LibraryProviding {
             duration: item.playbackDuration,
             assetURL: item.assetURL,
             artworkID: item.artwork != nil ? item.persistentID : nil,
-            isPlayable: isPlayable
+            isPlayable: true,
+            origin: enginePlayable ? .local : .appleMusic,
+            playbackID: item.persistentID
         )
     }
 

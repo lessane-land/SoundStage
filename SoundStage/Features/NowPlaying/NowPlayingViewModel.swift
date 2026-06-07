@@ -3,7 +3,7 @@ import Observation
 
 /// Drives the main player screen, routing playback by track origin:
 /// `.local` tracks stream through `AudioEngine` (spatial presets apply);
-/// `.appleMusic` tracks play via `AppleMusicService` / `ApplicationMusicPlayer`
+/// `.appleMusic` tracks play via `SystemMusicPlayer` / `MPMusicPlayerController`
 /// (Apple's DRM means the presets are a visual theme only).
 @MainActor
 @Observable
@@ -24,14 +24,14 @@ final class NowPlayingViewModel {
 
     private let presetStore: PresetStore
     private let engine: AudioEngine
-    private let appleMusic: AppleMusicService?
+    private let systemPlayer: SystemMusicPlayer?
     private var ticker: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
 
-    init(presetStore: PresetStore, engine: AudioEngine = .shared, appleMusic: AppleMusicService? = nil) {
+    init(presetStore: PresetStore, engine: AudioEngine = .shared, systemPlayer: SystemMusicPlayer? = nil) {
         self.presetStore = presetStore
         self.engine = engine
-        self.appleMusic = appleMusic
+        self.systemPlayer = systemPlayer
         self.currentTrack = .placeholder
         self.activePreset = presetStore.selectedPreset
     }
@@ -54,11 +54,8 @@ final class NowPlayingViewModel {
     func togglePlayback() {
         guard hasTrack, !isLoading else { return }
         if isAppleMusic {
-            guard let appleMusic else { return }
-            Task {
-                await appleMusic.togglePlayback()
-                isPlaying = appleMusic.isPlaying
-            }
+            systemPlayer?.togglePlayback()
+            isPlaying = systemPlayer?.isPlaying ?? false
         } else {
             isPlaying.toggle()
             if isPlaying { engine.play() } else { engine.pause() }
@@ -75,10 +72,10 @@ final class NowPlayingViewModel {
         }
     }
 
-    // MARK: - Local playback
+    // MARK: - Local playback (effects engine)
 
     func load(_ track: Track, autoPlay: Bool = true) {
-        appleMusic?.pause()
+        systemPlayer?.pause()
         currentTrack = track
         isPlaying = false
         elapsed = 0
@@ -110,34 +107,29 @@ final class NowPlayingViewModel {
         }
     }
 
-    // MARK: - Apple Music playback
+    // MARK: - System playback (Apple Music / cloud / protected)
 
     private func playAppleMusic(_ track: Track, in tracks: [Track]) {
-        guard let appleMusic else {
-            loadError = "Apple Music isn't set up on this device."
+        guard let systemPlayer, let playbackID = track.playbackID else {
+            loadError = "This track can't be played on this device."
             return
         }
         engine.pause()
         loadTask?.cancel()
         currentTrack = track
+        isLoading = false
         elapsed = 0
         duration = track.duration
-        isPlaying = false
-        isLoading = true
-        Task {
-            await appleMusic.play(trackID: track.id, queueIDs: tracks.map(\.id))
-            isLoading = false
-            isPlaying = appleMusic.isPlaying
-            if appleMusic.duration > 0 { duration = appleMusic.duration }
-        }
+        systemPlayer.play(playbackID: playbackID, queueIDs: tracks.compactMap(\.playbackID))
+        isPlaying = true
     }
 
     // MARK: - Transport
 
     func next() {
         if isAppleMusic {
-            guard let appleMusic else { return }
-            Task { await appleMusic.next(); syncAppleNowPlaying() }
+            systemPlayer?.next()
+            syncSystemNowPlaying()
             return
         }
         guard canGoNext else { return }
@@ -147,8 +139,8 @@ final class NowPlayingViewModel {
 
     func previous() {
         if isAppleMusic {
-            guard let appleMusic else { return }
-            Task { await appleMusic.previous(); syncAppleNowPlaying() }
+            systemPlayer?.previous()
+            syncSystemNowPlaying()
             return
         }
         guard !queue.isEmpty else { return }
@@ -181,7 +173,7 @@ final class NowPlayingViewModel {
     func endSeeking() {
         guard isSeeking else { return }
         if isAppleMusic {
-            appleMusic?.seek(to: elapsed)
+            systemPlayer?.seek(to: elapsed)
         } else {
             engine.seek(to: elapsed)
         }
@@ -205,12 +197,12 @@ final class NowPlayingViewModel {
         guard !isSeeking else { return }
 
         if isAppleMusic {
-            guard let appleMusic else { return }
-            appleMusic.refreshState()
-            isPlaying = appleMusic.isPlaying
-            if appleMusic.duration > 0 { duration = appleMusic.duration }
-            if isPlaying { elapsed = appleMusic.elapsed }
-            syncAppleNowPlaying()
+            guard let systemPlayer else { return }
+            systemPlayer.refreshState()
+            isPlaying = systemPlayer.isPlaying
+            if systemPlayer.duration > 0 { duration = systemPlayer.duration }
+            if isPlaying { elapsed = systemPlayer.elapsed }
+            syncSystemNowPlaying()
             return
         }
 
@@ -229,14 +221,13 @@ final class NowPlayingViewModel {
         }
     }
 
-    /// Tracks the Apple Music system player advancing to a new queue entry.
-    private func syncAppleNowPlaying() {
-        guard let appleMusic,
-              let id = appleMusic.nowPlayingID,
-              id != currentTrack.id,
-              let track = queue.first(where: { $0.id == id }) else { return }
+    /// Tracks the system player advancing to a new queue item.
+    private func syncSystemNowPlaying() {
+        guard let systemPlayer, let id = systemPlayer.nowPlayingID else { return }
+        guard String(id) != currentTrack.id,
+              let track = queue.first(where: { $0.playbackID == id }) else { return }
         currentTrack = track
-        queueIndex = queue.firstIndex(where: { $0.id == id }) ?? queueIndex
-        if appleMusic.duration > 0 { duration = appleMusic.duration }
+        queueIndex = queue.firstIndex(where: { $0.playbackID == id }) ?? queueIndex
+        if systemPlayer.duration > 0 { duration = systemPlayer.duration }
     }
 }
