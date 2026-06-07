@@ -296,26 +296,35 @@ struct NowPlayingView: View {
     }
 
     private var rotationControl: some View {
-        HStack(spacing: 12) {
-            Text("16D")
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(viewModel.rotationAmount > 0 ? preset.toColor : .white.opacity(0.4))
-                .frame(width: 34, alignment: .leading)
-            Slider(
-                value: Binding(
-                    get: { viewModel.rotationAmount },
-                    set: { viewModel.setRotation(amount: $0) }
-                ),
-                in: 0...1
-            )
-            .tint(preset.toColor)
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 13))
-                .foregroundStyle(viewModel.rotationAmount > 0 ? preset.toColor : .white.opacity(0.35))
+        VStack(spacing: 4) {
+            HStack(spacing: 12) {
+                Text("16D SPIN")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .tracking(0.5)
+                    .foregroundStyle(viewModel.rotationAmount > 0 ? preset.toColor : .white.opacity(0.4))
+                    .frame(width: 64, alignment: .leading)
+                Slider(
+                    value: Binding(
+                        get: { viewModel.rotationAmount },
+                        set: { viewModel.setRotation(amount: $0) }
+                    ),
+                    in: 0...1
+                )
+                .tint(preset.toColor)
+                Text(viewModel.rotationAmount > 0 ? "\(Int(viewModel.rotationAmount * 100))%" : "Off")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .monospacedDigit()
+                    .frame(width: 30, alignment: .trailing)
+            }
+            Text("Spins the sound around your head — use headphones")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.3))
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, DesignTokens.Spacing.m)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("16D spin")
+        .accessibilityLabel("16D spin amount")
     }
 
     private func ctrlButton(systemName: String, size: CGFloat, color: Color, diameter: CGFloat, enabled: Bool = true, action: @escaping () -> Void) -> some View {

@@ -77,7 +77,9 @@ final class MusicBrowserViewModel {
             } catch is SearchError {
                 self.state = .error("Allow Apple Music access in Settings to search the catalog.")
             } catch {
-                self.state = .error("Couldn't reach \(self.source.rawValue). Check your connection.")
+                self.state = .error(self.source == .appleMusic
+                    ? "Apple Music: \(error.localizedDescription)"
+                    : "Couldn't reach \(self.source.rawValue). Check your connection.")
             }
         }
     }
