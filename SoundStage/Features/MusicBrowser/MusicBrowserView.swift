@@ -1,36 +1,34 @@
 import SwiftUI
 
-/// Online music search sheet (Internet Archive / Jamendo). Results are DRM-free,
-/// so they play through the spatial engine just like local files. Matches the
-/// design's music browser layout.
+/// Music search/browse sheet (Deezer). DRM-free 30s previews that play through
+/// the 16D engine. Shows popular tracks before you type, live results after.
 struct MusicBrowserView: View {
     @State var viewModel: MusicBrowserViewModel
     let preset: Preset
     var currentTrackID: String?
 
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            sourcePicker
             searchField
             content
         }
         .background(DesignTokens.Palette.backgroundPrimary.ignoresSafeArea())
         .presentationBackground(DesignTokens.Palette.backgroundPrimary)
         .preferredColorScheme(.dark)
+        .task { await viewModel.loadBrowseIfNeeded() }
     }
-
-    // MARK: - Header
 
     private var header: some View {
         HStack {
             HStack(spacing: 9) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 18, weight: .bold))
+                Image(systemName: "music.note")
+                    .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(preset.toColor)
-                Text("Search")
+                Text("Music")
                     .font(.system(size: 22, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
@@ -48,17 +46,6 @@ struct MusicBrowserView: View {
         .padding(.top, 16)
     }
 
-    private var sourcePicker: some View {
-        Picker("Source", selection: $viewModel.source) {
-            ForEach(MusicSource.allCases) { source in
-                Text(source.title).tag(source)
-            }
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-    }
-
     private var searchField: some View {
         HStack(spacing: 9) {
             Image(systemName: "magnifyingglass")
@@ -68,11 +55,11 @@ struct MusicBrowserView: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.white)
                 .tint(preset.toColor)
+                .focused($searchFocused)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .onChange(of: viewModel.query) { _, _ in viewModel.search() }
-                .onSubmit { viewModel.search() }
             if !viewModel.query.isEmpty {
                 Button { viewModel.query = ""; viewModel.search() } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -82,42 +69,45 @@ struct MusicBrowserView: View {
             }
         }
         .padding(.horizontal, 14)
-        .frame(height: 42)
+        .frame(height: 44)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.white.opacity(0.08))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.06)))
         )
         .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.vertical, 14)
     }
-
-    // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
         switch viewModel.state {
-        case .idle:
-            message(icon: "magnifyingglass", title: "Search \(viewModel.source.title)",
-                    detail: viewModel.source.notice ?? "\(viewModel.source.title) tracks are DRM-free, so your spatial presets apply.")
-        case .searching:
+        case .loading:
             ProgressView().tint(preset.toColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .empty:
-            message(icon: "magnifyingglass", title: "No results for \u{201C}\(viewModel.query)\u{201D}",
-                    detail: "Try another artist, song, or album.")
         case .error(let text):
-            message(icon: "exclamationmark.triangle", title: "Hmm", detail: text)
-        case .results:
-            resultsList
+            message(icon: "wifi.slash", title: "Offline", detail: text)
+        case .empty:
+            message(icon: "magnifyingglass",
+                    title: viewModel.isSearching ? "No results for \u{201C}\(viewModel.query)\u{201D}" : "Nothing here",
+                    detail: "Try another artist, song, or album.")
+        case .browse, .results:
+            list
         }
     }
 
-    private var resultsList: some View {
+    private var list: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(viewModel.results) { track in
+            LazyVStack(alignment: .leading, spacing: 0) {
+                Text(viewModel.isSearching ? "Results" : "Popular")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .tracking(0.4)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+
+                ForEach(viewModel.displayed) { track in
                     Button {
+                        searchFocused = false
                         viewModel.play(track)
                         dismiss()
                     } label: {
@@ -126,7 +116,6 @@ struct MusicBrowserView: View {
                     .buttonStyle(ScaleButtonStyle(pressedScale: 0.98))
                 }
             }
-            .padding(.horizontal, 14)
             .padding(.bottom, 32)
         }
         .scrollDismissesKeyboard(.immediately)
@@ -140,10 +129,10 @@ struct MusicBrowserView: View {
             Text(title)
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
             Text(detail)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.35))
-                .multilineTextAlignment(.center)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -173,15 +162,12 @@ private struct SongRow: View {
 
             Spacer(minLength: 8)
 
-            if track.duration > 0 {
-                Text(track.formattedDuration)
-                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.3))
-                    .monospacedDigit()
-            }
+            Image(systemName: isCurrent ? "speaker.wave.2.fill" : "chevron.right")
+                .font(.system(size: isCurrent ? 12 : 11, weight: .semibold))
+                .foregroundStyle(isCurrent ? preset.toColor : .white.opacity(0.25))
         }
         .padding(.vertical, 8)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 20)
         .contentShape(Rectangle())
     }
 }

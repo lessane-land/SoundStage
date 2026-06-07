@@ -40,27 +40,38 @@ struct DeezerProvider: OnlineMusicProvider {
     func search(_ query: String) async throws -> [Track] {
         var components = URLComponents(string: "https://api.deezer.com/search")!
         components.queryItems = [URLQueryItem(name: "q", value: query)]
-        guard let url = components.url else { return [] }
-        let (data, _) = try await URLSession.shared.data(from: url)
-        let response = try JSONDecoder().decode(DeezerResponse.self, from: data)
-        return response.data.compactMap { item in
-            guard !item.preview.isEmpty, let preview = URL(string: item.preview) else { return nil }
-            return Track(
-                id: "deezer:\(item.id)",
-                title: item.title,
-                artist: item.artist.name,
-                albumTitle: item.album.title,
-                duration: 30,
-                assetURL: preview,
-                artworkID: nil,
-                isPlayable: true,
-                origin: .local,
-                artworkURL: item.album.cover_medium.flatMap(URL.init(string:))
-            )
-        }
+        return try await tracks(from: components.url)
+    }
+
+    /// Popular tracks, shown as a browse list before the user searches.
+    func chart() async throws -> [Track] {
+        try await tracks(from: URL(string: "https://api.deezer.com/chart/0/tracks?limit=40"))
     }
 
     func resolveStreamURL(for track: Track) async throws -> URL? { track.assetURL }
+
+    private func tracks(from url: URL?) async throws -> [Track] {
+        guard let url else { return [] }
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let response = try JSONDecoder().decode(DeezerResponse.self, from: data)
+        return response.data.compactMap(Self.track(from:))
+    }
+
+    private static func track(from item: Item) -> Track? {
+        guard !item.preview.isEmpty, let preview = URL(string: item.preview) else { return nil }
+        return Track(
+            id: "deezer:\(item.id)",
+            title: item.title,
+            artist: item.artist.name,
+            albumTitle: item.album.title,
+            duration: 30,
+            assetURL: preview,
+            artworkID: nil,
+            isPlayable: true,
+            origin: .local,
+            artworkURL: item.album.cover_medium.flatMap(URL.init(string:))
+        )
+    }
 
     private struct DeezerResponse: Decodable { let data: [Item] }
     private struct Item: Decodable {
