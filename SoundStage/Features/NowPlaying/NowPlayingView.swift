@@ -113,10 +113,10 @@ struct NowPlayingView: View {
                 .accessibilityLabel("Choose preset")
             Spacer()
             VStack(spacing: 2) {
-                Text("SPATIAL AUDIO")
+                Text(viewModel.effectsAvailable ? "SPATIAL AUDIO" : "APPLE MUSIC")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .tracking(1.6)
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(viewModel.effectsAvailable ? preset.toColor.opacity(0.9) : .white.opacity(0.4))
                 Text(albumLine)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.8))
@@ -296,12 +296,13 @@ struct NowPlayingView: View {
     }
 
     private var rotationControl: some View {
-        VStack(spacing: 4) {
+        let effectsOn = viewModel.effectsAvailable
+        return VStack(spacing: 4) {
             HStack(spacing: 12) {
                 Text("16D SPIN")
                     .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .tracking(0.5)
-                    .foregroundStyle(viewModel.rotationAmount > 0 ? preset.toColor : .white.opacity(0.4))
+                    .foregroundStyle(effectsOn && viewModel.rotationAmount > 0 ? preset.toColor : .white.opacity(0.4))
                     .frame(width: 64, alignment: .leading)
                 Slider(
                     value: Binding(
@@ -311,17 +312,21 @@ struct NowPlayingView: View {
                     in: 0...1
                 )
                 .tint(preset.toColor)
+                .disabled(!effectsOn)
                 Text(viewModel.rotationAmount > 0 ? "\(Int(viewModel.rotationAmount * 100))%" : "Off")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.4))
                     .monospacedDigit()
                     .frame(width: 30, alignment: .trailing)
             }
-            Text("Spins the sound around your head — use headphones")
+            Text(effectsOn
+                 ? "Spins the sound around your head — use headphones"
+                 : "Apple Music plays as-is — no 16D or spatial effects")
                 .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(.white.opacity(0.32))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .opacity(effectsOn ? 1 : 0.55)
         .padding(.horizontal, DesignTokens.Spacing.m)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("16D spin amount")

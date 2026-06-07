@@ -10,7 +10,6 @@ final class MusicBrowserViewModel {
 
     enum Source: String, CaseIterable, Identifiable {
         case appleMusic = "Apple Music"
-        case jamendo = "Jamendo"
         case archive = "Archive"
         var id: String { rawValue }
     }
@@ -25,9 +24,6 @@ final class MusicBrowserViewModel {
 
     private enum SearchError: Error { case unauthorized }
 
-    /// Paste a free Jamendo client id (https://devportal.jamendo.com) to enable it.
-    static let jamendoClientID = "YOUR_JAMENDO_CLIENT_ID"
-
     var source: Source = .appleMusic {
         didSet { if oldValue != source { onSourceChanged() } }
     }
@@ -38,17 +34,13 @@ final class MusicBrowserViewModel {
     var onPlay: ((Track, [Track]) -> Void)?
 
     private let appleMusic = AppleMusicCatalog()
-    private let jamendo = JamendoProvider(clientID: MusicBrowserViewModel.jamendoClientID)
     private let archive = InternetArchiveProvider()
     private var searchTask: Task<Void, Never>?
 
     var sourceNote: String {
         switch source {
         case .appleMusic: return "Full songs — plays, but no 16D (Apple DRM)."
-        case .jamendo: return jamendo.isConfigured
-            ? "Full DRM-free tracks — 16D works."
-            : "Needs a free Jamendo API key to enable."
-        case .archive: return "Music collections, full length — 16D works."
+        case .archive: return "Music, full length — 16D works on these."
         }
     }
 
@@ -58,10 +50,6 @@ final class MusicBrowserViewModel {
         guard !trimmed.isEmpty else {
             results = []
             state = .idle
-            return
-        }
-        if source == .jamendo, !jamendo.isConfigured {
-            state = .error("Add a free Jamendo client id in MusicBrowserViewModel to use this source.")
             return
         }
 
@@ -93,8 +81,6 @@ final class MusicBrowserViewModel {
                 }
             }
             return try await appleMusic.search(query)
-        case .jamendo:
-            return try await jamendo.search(query)
         case .archive:
             return try await archive.search(query)
         }
