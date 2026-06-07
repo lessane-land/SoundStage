@@ -36,8 +36,11 @@ struct Track: Identifiable, Equatable, Sendable {
     /// Where the track comes from / how it's played.
     var origin: TrackOrigin = .local
 
-    /// Media-library persistent id used by the system player (`.appleMusic`).
+    /// Media-library persistent id used by the system player (cloud library).
     var playbackID: UInt64? = nil
+
+    /// Apple Music catalog/store id, for catalog search results.
+    var catalogID: String? = nil
 
     /// Remote artwork URL, loaded by `ArtworkView` when present.
     var artworkURL: URL? = nil

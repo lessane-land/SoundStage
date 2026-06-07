@@ -1,80 +1,112 @@
 import Foundation
 import Observation
 
-/// Drives the music search/browse sheet. One clean source (Deezer): a popular
-/// browse list before you type, live search after. Results are 30s DRM-free
-/// previews that play through the 16D engine.
+/// Drives the music search sheet across three sources:
+/// Apple Music (full songs, no 16D), Jamendo and Internet Archive (full
+/// DRM-free tracks the 16D engine can process).
 @MainActor
 @Observable
 final class MusicBrowserViewModel {
 
+    enum Source: String, CaseIterable, Identifiable {
+        case appleMusic = "Apple Music"
+        case jamendo = "Jamendo"
+        case archive = "Archive"
+        var id: String { rawValue }
+    }
+
     enum State: Equatable {
-        case loading
-        case browse
+        case idle
+        case searching
         case results
         case empty
         case error(String)
     }
 
+    private enum SearchError: Error { case unauthorized }
+
+    /// Paste a free Jamendo client id (https://devportal.jamendo.com) to enable it.
+    static let jamendoClientID = "YOUR_JAMENDO_CLIENT_ID"
+
+    var source: Source = .appleMusic {
+        didSet { if oldValue != source { onSourceChanged() } }
+    }
     var query: String = ""
-    private(set) var state: State = .loading
-    private(set) var browse: [Track] = []
+    private(set) var state: State = .idle
     private(set) var results: [Track] = []
 
-    /// Hands the chosen track plus its list back to the player.
     var onPlay: ((Track, [Track]) -> Void)?
 
-    private let deezer = DeezerProvider()
+    private let appleMusic = AppleMusicCatalog()
+    private let jamendo = JamendoProvider(clientID: MusicBrowserViewModel.jamendoClientID)
+    private let archive = InternetArchiveProvider()
     private var searchTask: Task<Void, Never>?
 
-    /// What the list currently shows.
-    var displayed: [Track] {
-        isSearching ? results : browse
-    }
-
-    var isSearching: Bool {
-        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// Loads the popular browse list (called once on appear).
-    func loadBrowseIfNeeded() async {
-        guard browse.isEmpty else { return }
-        state = .loading
-        do {
-            browse = try await deezer.chart()
-            state = browse.isEmpty ? .empty : .browse
-        } catch {
-            state = .error("Couldn't reach Deezer. Check your connection.")
+    var sourceNote: String {
+        switch source {
+        case .appleMusic: return "Full songs — plays, but no 16D (Apple DRM)."
+        case .jamendo: return jamendo.isConfigured
+            ? "Full DRM-free tracks — 16D works."
+            : "Needs a free Jamendo API key to enable."
+        case .archive: return "Music collections, full length — 16D works."
         }
     }
 
-    /// Debounced live search on the current query.
     func search() {
         searchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
         guard !trimmed.isEmpty else {
             results = []
-            state = browse.isEmpty ? .loading : .browse
+            state = .idle
+            return
+        }
+        if source == .jamendo, !jamendo.isConfigured {
+            state = .error("Add a free Jamendo client id in MusicBrowserViewModel to use this source.")
             return
         }
 
+        state = .searching
         searchTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard let self, !Task.isCancelled else { return }
             do {
-                let found = try await self.deezer.search(trimmed)
+                let found = try await self.runSearch(trimmed)
                 if Task.isCancelled { return }
                 self.results = found
                 self.state = found.isEmpty ? .empty : .results
+            } catch is SearchError {
+                self.state = .error("Allow Apple Music access in Settings to search the catalog.")
             } catch {
-                if Task.isCancelled { return }
-                self.state = .error("Couldn't reach Deezer. Check your connection.")
+                self.state = .error("Couldn't reach \(self.source.rawValue). Check your connection.")
             }
         }
     }
 
+    private func runSearch(_ query: String) async throws -> [Track] {
+        switch source {
+        case .appleMusic:
+            if appleMusic.authorizationStatus != .authorized {
+                guard await appleMusic.requestAuthorization() == .authorized else {
+                    throw SearchError.unauthorized
+                }
+            }
+            return try await appleMusic.search(query)
+        case .jamendo:
+            return try await jamendo.search(query)
+        case .archive:
+            return try await archive.search(query)
+        }
+    }
+
     func play(_ track: Track) {
-        onPlay?(track, displayed)
+        onPlay?(track, results)
+    }
+
+    private func onSourceChanged() {
+        results = []
+        state = .idle
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            search()
+        }
     }
 }

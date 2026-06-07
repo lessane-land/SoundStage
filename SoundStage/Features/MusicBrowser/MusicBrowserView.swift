@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Music search/browse sheet (Deezer). DRM-free 30s previews that play through
-/// the 16D engine. Shows popular tracks before you type, live results after.
+/// Music search sheet across Apple Music (full songs, no 16D) and the DRM-free
+/// sources (Jamendo, Internet Archive) the 16D engine can process.
 struct MusicBrowserView: View {
     @State var viewModel: MusicBrowserViewModel
     let preset: Preset
@@ -13,22 +13,23 @@ struct MusicBrowserView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            sourcePicker
             searchField
+            note
             content
         }
         .background(DesignTokens.Palette.backgroundPrimary.ignoresSafeArea())
         .presentationBackground(DesignTokens.Palette.backgroundPrimary)
         .preferredColorScheme(.dark)
-        .task { await viewModel.loadBrowseIfNeeded() }
     }
 
     private var header: some View {
         HStack {
             HStack(spacing: 9) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 19, weight: .bold))
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(preset.toColor)
-                Text("Music")
+                Text("Find Music")
                     .font(.system(size: 22, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
             }
@@ -44,6 +45,17 @@ struct MusicBrowserView: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
+    }
+
+    private var sourcePicker: some View {
+        Picker("Source", selection: $viewModel.source) {
+            ForEach(MusicBrowserViewModel.Source.allCases) { source in
+                Text(source.rawValue).tag(source)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
     }
 
     private var searchField: some View {
@@ -70,42 +82,43 @@ struct MusicBrowserView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: 44)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(0.08))
-        )
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white.opacity(0.08)))
         .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.top, 12)
+    }
+
+    private var note: some View {
+        Text(viewModel.sourceNote)
+            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .foregroundStyle(.white.opacity(0.4))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 22)
+            .padding(.top, 8)
     }
 
     @ViewBuilder
     private var content: some View {
         switch viewModel.state {
-        case .loading:
+        case .idle:
+            message(icon: "magnifyingglass", title: "Search \(viewModel.source.rawValue)",
+                    detail: "Type an artist, song, or album.")
+        case .searching:
             ProgressView().tint(preset.toColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .error(let text):
-            message(icon: "wifi.slash", title: "Offline", detail: text)
         case .empty:
-            message(icon: "magnifyingglass",
-                    title: viewModel.isSearching ? "No results for \u{201C}\(viewModel.query)\u{201D}" : "Nothing here",
+            message(icon: "magnifyingglass", title: "No results for \u{201C}\(viewModel.query)\u{201D}",
                     detail: "Try another artist, song, or album.")
-        case .browse, .results:
+        case .error(let text):
+            message(icon: "exclamationmark.triangle", title: "Hmm", detail: text)
+        case .results:
             list
         }
     }
 
     private var list: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                Text(viewModel.isSearching ? "Results" : "Popular")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .tracking(0.4)
-                    .foregroundStyle(.white.opacity(0.5))
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-
-                ForEach(viewModel.displayed) { track in
+            LazyVStack(spacing: 0) {
+                ForEach(viewModel.results) { track in
                     Button {
                         searchFocused = false
                         viewModel.play(track)
@@ -116,6 +129,7 @@ struct MusicBrowserView: View {
                     .buttonStyle(ScaleButtonStyle(pressedScale: 0.98))
                 }
             }
+            .padding(.top, 6)
             .padding(.bottom, 32)
         }
         .scrollDismissesKeyboard(.immediately)

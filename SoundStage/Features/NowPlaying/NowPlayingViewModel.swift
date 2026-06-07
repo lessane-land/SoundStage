@@ -126,7 +126,7 @@ final class NowPlayingViewModel {
     // MARK: - System playback (Apple Music / cloud / protected)
 
     private func playAppleMusic(_ track: Track, in tracks: [Track]) {
-        guard let systemPlayer, let playbackID = track.playbackID else {
+        guard let systemPlayer else {
             loadError = "This track can't be played on this device."
             return
         }
@@ -136,7 +136,15 @@ final class NowPlayingViewModel {
         isLoading = false
         elapsed = 0
         duration = track.duration
-        systemPlayer.play(playbackID: playbackID, queueIDs: tracks.compactMap(\.playbackID))
+
+        if let catalogID = track.catalogID {
+            systemPlayer.playCatalog(storeID: catalogID, queueStoreIDs: tracks.compactMap(\.catalogID))
+        } else if let playbackID = track.playbackID {
+            systemPlayer.play(playbackID: playbackID, queueIDs: tracks.compactMap(\.playbackID))
+        } else {
+            loadError = "This track can't be played on this device."
+            return
+        }
         isPlaying = true
     }
 

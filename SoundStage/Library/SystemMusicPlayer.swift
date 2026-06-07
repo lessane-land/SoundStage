@@ -32,6 +32,17 @@ final class SystemMusicPlayer {
         isPlaying = true
     }
 
+    /// Plays an Apple Music catalog song (by store id) within a queue.
+    func playCatalog(storeID: String, queueStoreIDs: [String]) {
+        let ids = queueStoreIDs.isEmpty ? [storeID] : queueStoreIDs
+        let descriptor = MPMusicPlayerStoreQueueDescriptor(storeIDs: ids)
+        descriptor.startItemID = storeID
+        player.setQueue(with: descriptor)
+        player.prepareToPlay()
+        player.play()
+        isPlaying = true
+    }
+
     func togglePlayback() {
         if player.playbackState == .playing {
             player.pause()

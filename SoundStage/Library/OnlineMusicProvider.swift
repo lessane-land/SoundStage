@@ -91,8 +91,10 @@ struct InternetArchiveProvider: OnlineMusicProvider {
 
     func search(_ query: String) async throws -> [Track] {
         var components = URLComponents(string: "https://archive.org/advancedsearch.php")!
+        // Restrict to music collections so results are songs, not talks/sermons.
+        let musicFilter = "collection:(audio_music OR etree OR netlabels OR opensource_audio)"
         components.queryItems = [
-            URLQueryItem(name: "q", value: "(\(query)) AND mediatype:(audio)"),
+            URLQueryItem(name: "q", value: "(\(query)) AND mediatype:(audio) AND \(musicFilter)"),
             URLQueryItem(name: "fl[]", value: "identifier"),
             URLQueryItem(name: "fl[]", value: "title"),
             URLQueryItem(name: "fl[]", value: "creator"),
