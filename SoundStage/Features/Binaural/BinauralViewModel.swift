@@ -20,6 +20,8 @@ final class BinauralViewModel {
     /// Master ambience level (the AMBIENCE slider) scaling every layer.
     private(set) var ambienceLevel: Double = 0.6
     private(set) var spatialAmount: Double = 0.4
+    /// Binaural-tone volume (0 = off). Kept gentle by default.
+    private(set) var toneLevel: Double = 0.45
 
     /// Master output + session options.
     private(set) var volume: Double = 0.85
@@ -95,6 +97,11 @@ final class BinauralViewModel {
         engine.setSpatial(amount: value)
     }
 
+    func setToneLevel(_ value: Double) {
+        toneLevel = value
+        engine.setToneLevel(value)
+    }
+
     func setVolume(_ value: Double) {
         volume = value
         muted = value <= 0.001
@@ -114,6 +121,7 @@ final class BinauralViewModel {
         isPlaying.toggle()
         if isPlaying {
             engine.setTone(carrier: carrierHz, beat: beatHz)
+            engine.setToneLevel(toneLevel)
             syncAllLayers()
             engine.setSpatial(amount: spatialAmount)
             engine.setMasterVolume(muted ? 0 : volume)

@@ -42,6 +42,12 @@ final class BinauralEngine: @unchecked Sendable {
     private var ambLevels = [Float](repeating: 0, count: typeCount)
     private var spatialAmount = 0.0
     private var headYaw = 0.0
+    private var toneLevel: Float = 0.5      // binaural-tone volume (0 = off)
+    private var toneLevelCur: Float = 0.5
+
+    // Spatial pan automation (drives the whole ambient bus, synth + recordings).
+    private var spatialTimer: Timer?
+    private var spatialPhase = 0.0
 
     // Tones state.
     private var phaseLeft = 0.0
@@ -157,6 +163,9 @@ final class BinauralEngine: @unchecked Sendable {
     func setSpatial(amount: Double) { spatialAmount = max(0, min(1, amount)) }
     func setHeadYaw(_ yaw: Double) { headYaw = yaw }
 
+    /// Volume of the binaural tone (0...1); 0 silences it entirely.
+    func setToneLevel(_ value: Double) { toneLevel = Float(max(0, min(1, value))) }
+
     func setMasterVolume(_ value: Double) {
         configureIfNeeded()
         engine.mainMixerNode.outputVolume = Float(max(0, min(1, value))) * 0.9
@@ -181,19 +190,52 @@ final class BinauralEngine: @unchecked Sendable {
             try? engine.start()
         }
         startPlayers()
+        startSpatialTimer()
         targetAmplitude = 0.9
     }
 
     func pause() {
         targetAmplitude = 0.0
         players.values.forEach { $0.pause() }
+        stopSpatialTimer()
     }
 
     func stop() {
         targetAmplitude = 0.0
         players.values.forEach { $0.stop() }
         playersScheduled = false
+        stopSpatialTimer()
         engine.stop()
+    }
+
+    // MARK: - Spatial pan (whole ambient bus)
+
+    /// Slowly pans the ambient submix L↔R (anchored against head yaw) so both the
+    /// synth layers and the real recordings drift in space. ~30 Hz, click-free.
+    private func startSpatialTimer() {
+        guard spatialTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.updateSpatialPan()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        spatialTimer = timer
+    }
+
+    private func stopSpatialTimer() {
+        spatialTimer?.invalidate()
+        spatialTimer = nil
+        players.values.forEach { $0.pan = 0 }
+    }
+
+    private func updateSpatialPan() {
+        let depth = spatialAmount
+        guard depth > 0.04 else { players.values.forEach { $0.pan = 0 }; return }
+        spatialPhase += (0.04 + depth * 0.08) * (1.0 / 30.0) * 2 * .pi
+        if spatialPhase > 2 * .pi { spatialPhase -= 2 * .pi }
+        let sway = Float(sin(spatialPhase)) * Float(depth) * 0.85
+        let anchor = Float(sin(headYaw)) * 0.55      // counter head rotation
+        let pan = max(-1, min(1, sway - anchor))
+        players.values.forEach { $0.pan = pan }
     }
 
     /// (Re)schedules each looping recording if needed, then starts the players.
@@ -339,8 +381,9 @@ final class BinauralEngine: @unchecked Sendable {
             // Gentle one-pole smoothing rounds the very top edge / onset clicks.
             toneLpL += (l - toneLpL) * 0.6
             toneLpR += (r - toneLpR) * 0.6
-            l = toneLpL * env
-            r = toneLpR * env
+            toneLevelCur += (toneLevel - toneLevelCur) * 0.0008   // smooth level changes
+            l = toneLpL * env * toneLevelCur
+            r = toneLpR * env * toneLevelCur
             if chimeEnv > 0.0005 {   // session-end bell, centered, independent of env
                 let bell = (Float(sin(chimePh1)) * 0.6 + Float(sin(chimePh2)) * 0.3 + Float(sin(chimePh3)) * 0.2) * chimeEnv * 0.22
                 l += bell; r += bell
@@ -375,12 +418,10 @@ final class BinauralEngine: @unchecked Sendable {
         let step = (target - ambientAmp) / Double(max(1, frames))
         let waveInc = twoPi * 0.09 / sampleRate
         let windInc = twoPi * 0.06 / sampleRate
-        // Two incommensurate orbit rates so the pan never feels metronomic.
-        // Kept slow + gentle: fast circling is a dizziness/motion-sickness trigger.
         let rotIncA = twoPi * (0.055 + spatialAmount * 0.11) / sampleRate
         let rotIncB = twoPi * (0.028 + spatialAmount * 0.05) / sampleRate
         let depth = Float(spatialAmount)
-        let yaw = Float(headYaw)
+        let yaw = Double(headYaw)
 
         for frame in 0..<frames {
             ambientAmp += step
@@ -617,15 +658,14 @@ final class BinauralEngine: @unchecked Sendable {
             ambBusLpL += (ambL - ambBusLpL) * 0.55; ambL = ambBusLpL
             ambBusLpR += (ambR - ambBusLpR) * 0.55; ambR = ambBusLpR
 
-            // Spatial: a subtle, slow sway (two orbits) + head yaw. Kept shallow
-            // so it never feels like the room is spinning around you.
+            // Spatial sway for the synth layers (recordings are panned on their
+            // player nodes by the spatial timer instead).
             if depth > 0.001 {
                 rotA += rotIncA; if rotA > twoPi { rotA -= twoPi }
                 rotB += rotIncB; if rotB > twoPi { rotB -= twoPi }
-                let sway = (Float(sin(rotA - Double(yaw))) * 0.7 + Float(sin(rotB)) * 0.3) * depth
-                let gainL = 1 - max(0, sway) * 0.35
-                let gainR = 1 - max(0, -sway) * 0.35
-                ambL *= gainL; ambR *= gainR
+                let sway = (Float(sin(rotA - yaw)) * 0.7 + Float(sin(rotB)) * 0.3) * depth
+                ambL *= 1 - max(0, sway) * 0.5
+                ambR *= 1 - max(0, -sway) * 0.5
             }
 
             left[frame] = ambL * env

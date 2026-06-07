@@ -12,6 +12,7 @@ struct BinauralSettingsSheet: View {
                 BinauralSheetHeader(state: state, eyebrow: "MORE", title: "Settings")
                 ScrollView {
                     VStack(spacing: 14) {
+                        toneCard
                         volumeCard
                         BinauralGlassToggle(state: state, label: "Mute", sub: "Silence all output",
                                             icon: "speaker.slash.fill", on: viewModel.muted,
@@ -27,6 +28,40 @@ struct BinauralSettingsSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var toneCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(viewModel.toneLevel <= 0.001 ? .white.opacity(0.4) : state.toColor)
+                Text("BINAURAL TONE")
+                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                    .tracking(1.5)
+                    .foregroundStyle(.white.opacity(0.5))
+                Spacer()
+                Text(viewModel.toneLevel <= 0.001 ? "Off" : "\(Int(viewModel.toneLevel * 100))%")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            BinauralMiniSlider(
+                state: state,
+                value: Binding(get: { viewModel.toneLevel }, set: { viewModel.setToneLevel($0) })
+            )
+            Text("The brainwave beat. Lower it (or turn it off) if it feels intense — the soundscapes still play.")
+                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.4))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var volumeCard: some View {
