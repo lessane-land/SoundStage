@@ -32,9 +32,10 @@ final class BinauralEngine: @unchecked Sendable {
     private var phaseRight = 0.0
     private var amplitude = 0.0
     private var rng: UInt32 = 0x9E3779B9
-    private var lpA: Float = 0          // generic low-pass states
-    private var lpB: Float = 0
-    private var brown: Float = 0
+    // Independent filter states per ear → decorrelated, enveloping soundscape.
+    private var lpA_L: Float = 0, lpA_R: Float = 0
+    private var lpB_L: Float = 0, lpB_R: Float = 0
+    private var brownL: Float = 0, brownR: Float = 0
     private var waveLFO = 0.0
     private var windLFO = 0.0
     private var rotationPhase = 0.0
@@ -136,46 +137,49 @@ final class BinauralEngine: @unchecked Sendable {
             phaseLeft += incLeft; if phaseLeft > twoPi { phaseLeft -= twoPi }
             phaseRight += incRight; if phaseRight > twoPi { phaseRight -= twoPi }
 
-            // Ambient soundscape (mono).
-            var amb: Float = 0
+            // Ambient soundscape — independent noise per ear so it surrounds you.
+            var ambL: Float = 0, ambR: Float = 0
             if type != 0 && ambLevel > 0 {
-                let w = nextNoise()
+                let wl = nextNoise(), wr = nextNoise()
                 switch type {
                 case 1: // Rain — bright, high-passed hiss
-                    lpA += (w - lpA) * 0.45
-                    amb = (w - lpA) * 0.9
+                    lpA_L += (wl - lpA_L) * 0.45; ambL = (wl - lpA_L) * 0.9
+                    lpA_R += (wr - lpA_R) * 0.45; ambR = (wr - lpA_R) * 0.9
                 case 2: // Ocean — brown noise with slow swell
-                    brown += w * 0.015
-                    brown *= 0.992
+                    brownL += wl * 0.015; brownL *= 0.992
+                    brownR += wr * 0.015; brownR *= 0.992
                     waveLFO += waveInc; if waveLFO > twoPi { waveLFO -= twoPi }
-                    amb = brown * 3.2 * Float(0.35 + 0.65 * (0.5 + 0.5 * sin(waveLFO)))
+                    let swell = Float(0.35 + 0.65 * (0.5 + 0.5 * sin(waveLFO)))
+                    ambL = brownL * 3.4 * swell; ambR = brownR * 3.4 * swell
                 case 3: // Forest — soft mid band + gentle motion
-                    lpA += (w - lpA) * 0.20
-                    lpB += (lpA - lpB) * 0.6
+                    lpA_L += (wl - lpA_L) * 0.20; lpB_L += (lpA_L - lpB_L) * 0.6
+                    lpA_R += (wr - lpA_R) * 0.20; lpB_R += (lpA_R - lpB_R) * 0.6
                     windLFO += windInc; if windLFO > twoPi { windLFO -= twoPi }
-                    amb = (lpA - lpB) * 2.6 * Float(0.5 + 0.5 * (0.5 + 0.5 * sin(windLFO)))
+                    let mod = Float(0.5 + 0.5 * (0.5 + 0.5 * sin(windLFO)))
+                    ambL = (lpA_L - lpB_L) * 2.7 * mod; ambR = (lpA_R - lpB_R) * 2.7 * mod
                 case 4: // Wind — low rumble, slowly varying
-                    lpA += (w - lpA) * 0.05
+                    lpA_L += (wl - lpA_L) * 0.05; lpA_R += (wr - lpA_R) * 0.05
                     windLFO += windInc; if windLFO > twoPi { windLFO -= twoPi }
-                    amb = lpA * 2.8 * Float(0.4 + 0.6 * (0.5 + 0.5 * sin(windLFO)))
+                    let mod = Float(0.4 + 0.6 * (0.5 + 0.5 * sin(windLFO)))
+                    ambL = lpA_L * 2.9 * mod; ambR = lpA_R * 2.9 * mod
                 default: // White noise
-                    amb = w * 0.5
+                    ambL = wl * 0.5; ambR = wr * 0.5
                 }
-                amb *= ambLevel
+                ambL *= ambLevel; ambR *= ambLevel
             }
 
-            // Spatial pan of the ambient layer (orbits, and head-anchored when
-            // head tracking is on).
-            var panL: Float = 0.7071, panR: Float = 0.7071
+            // Spatial: a gentle circling emphasis on top of the enveloping field
+            // (and head-anchored when head tracking is on) — both ears stay full.
+            var gainL: Float = 1, gainR: Float = 1
             if depth > 0.001 {
                 rotationPhase += rotInc; if rotationPhase > twoPi { rotationPhase -= twoPi }
-                let pos = Float(sin(rotationPhase - yaw)) * depth
-                let angle = (pos * 0.5 + 0.5) * (Float.pi / 2)
-                panL = cos(angle); panR = sin(angle)
+                let sway = Float(sin(rotationPhase - yaw)) * depth
+                gainL = 1 - max(0, sway) * 0.6
+                gainR = 1 - max(0, -sway) * 0.6
             }
 
-            left[frame] = (toneL + amb * panL) * env
-            right[frame] = (toneR + amb * panR) * env
+            left[frame] = (toneL + ambL * gainL) * env
+            right[frame] = (toneR + ambR * gainR) * env
         }
         amplitude = target
         return noErr
