@@ -4,7 +4,7 @@ import SwiftUI
 /// in the state color — matching the design's AmbientLayer (rain falling, ocean
 /// waves, forest motes, wind streaks, noise).
 struct BinauralAmbientLayer: View {
-    let soundscape: Ambience?
+    let soundscapes: Set<Ambience>
     let color: Color
     let intensity: Double
     let isPlaying: Bool
@@ -25,15 +25,30 @@ struct BinauralAmbientLayer: View {
     var body: some View {
         TimelineView(.animation(paused: !isPlaying && intensity < 0.05)) { timeline in
             Canvas { context, size in
-                guard let soundscape else { return }
-                draw(soundscape, context: context, size: size,
-                     t: timeline.date.timeIntervalSinceReferenceDate)
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                for kind in soundscapes.sorted(by: { $0.code < $1.code }) {
+                    draw(visual(for: kind), context: context, size: size, t: t)
+                }
             }
         }
         .allowsHitTesting(false)
     }
 
-    private func draw(_ kind: Ambience, context: GraphicsContext, size: CGSize, t: TimeInterval) {
+    /// Maps each soundscape to a drawable texture style (new soundscapes reuse
+    /// the closest existing visual until the redesign ships dedicated art).
+    private enum Visual { case rain, ocean, forest, wind, noise }
+
+    private func visual(for kind: Ambience) -> Visual {
+        switch kind {
+        case .rain, .stream: return .rain
+        case .ocean: return .ocean
+        case .forest, .fire: return .forest
+        case .wind: return .wind
+        case .noise, .thunder, .cafe: return .noise
+        }
+    }
+
+    private func draw(_ kind: Visual, context: GraphicsContext, size: CGSize, t: TimeInterval) {
         let w = size.width, h = size.height
         let speed = isPlaying ? 1.0 : 0.18
         let level = max(0.05, intensity)

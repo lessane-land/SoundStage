@@ -28,6 +28,10 @@ enum Ambience: String, CaseIterable, Identifiable {
     case forest = "Forest"
     case wind = "Wind"
     case noise = "Noise"
+    case thunder = "Thunder"
+    case fire = "Fire"
+    case cafe = "Café"
+    case stream = "Stream"
 
     var id: String { rawValue }
 
@@ -40,6 +44,10 @@ enum Ambience: String, CaseIterable, Identifiable {
         case .forest: return "tree.fill"
         case .wind: return "wind"
         case .noise: return "waveform"
+        case .thunder: return "cloud.bolt.rain.fill"
+        case .fire: return "flame.fill"
+        case .cafe: return "cup.and.saucer.fill"
+        case .stream: return "drop.fill"
         }
     }
 
@@ -51,6 +59,10 @@ enum Ambience: String, CaseIterable, Identifiable {
         case .forest: return 3
         case .wind: return 4
         case .noise: return 5
+        case .thunder: return 6
+        case .fire: return 7
+        case .cafe: return 8
+        case .stream: return 9
         }
     }
 }
@@ -74,7 +86,10 @@ enum BinauralCatalog {
                       fromHex: 0xFF7A45, toHex: 0xFFC83D),
         BinauralState(id: "energy", name: "Energy", band: "Beta",
                       detail: "Bright, awake, ready to move", beatHz: 22, carrierHz: 130,
-                      fromHex: 0xFF1F3D, toHex: 0xFF7A45)
+                      fromHex: 0xFF1F3D, toHex: 0xFF7A45),
+        BinauralState(id: "sharp", name: "Sharp", band: "Gamma",
+                      detail: "Peak alertness and recall", beatHz: 38, carrierHz: 140,
+                      fromHex: 0xFFC83D, toHex: 0xFF7A45)
     ]
 
     static let `default` = all[3] // Focus

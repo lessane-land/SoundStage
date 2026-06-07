@@ -14,10 +14,14 @@ final class BinauralViewModel {
     private(set) var carrierHz: Double
     private(set) var beatHz: Double
 
-    /// Ambient soundscape + spatial orbit.
-    private(set) var ambience: Ambience?
+    /// Active ambient soundscapes (multi-select) sharing one master level.
+    private(set) var activeAmbiences: Set<Ambience> = []
     private(set) var ambienceLevel: Double = 0.5
     private(set) var spatialAmount: Double = 0.4
+
+    /// Master output.
+    private(set) var volume: Double = 0.85
+    private(set) var muted = false
 
     private let engine: BinauralEngine
     private let tracker = HeadTracker()
@@ -32,14 +36,25 @@ final class BinauralViewModel {
         tracker.start(onYaw: { engine.setHeadYaw($0) })
     }
 
+    /// Toggles a soundscape layer on/off.
     func toggleAmbience(_ value: Ambience) {
-        ambience = (ambience == value) ? nil : value
-        engine.setAmbient(type: ambience?.code ?? 0, level: ambienceLevel)
+        if activeAmbiences.contains(value) {
+            activeAmbiences.remove(value)
+            engine.setAmbientLevel(type: value.code, level: 0)
+        } else {
+            activeAmbiences.insert(value)
+            engine.setAmbientLevel(type: value.code, level: ambienceLevel)
+        }
     }
 
+    func isActive(_ value: Ambience) -> Bool { activeAmbiences.contains(value) }
+
+    /// Sets the shared level for every active soundscape.
     func setAmbienceLevel(_ value: Double) {
         ambienceLevel = value
-        engine.setAmbient(type: ambience?.code ?? 0, level: value)
+        for item in activeAmbiences {
+            engine.setAmbientLevel(type: item.code, level: value)
+        }
     }
 
     func setSpatial(_ value: Double) {
@@ -47,12 +62,24 @@ final class BinauralViewModel {
         engine.setSpatial(amount: value)
     }
 
+    func setVolume(_ value: Double) {
+        volume = value
+        muted = value <= 0.001
+        engine.setMasterVolume(value)
+    }
+
+    func toggleMute() {
+        muted.toggle()
+        engine.setMasterVolume(muted ? 0 : volume)
+    }
+
     func togglePlay() {
         isPlaying.toggle()
         if isPlaying {
             engine.setTone(carrier: carrierHz, beat: beatHz)
-            engine.setAmbient(type: ambience?.code ?? 0, level: ambienceLevel)
+            syncAmbiences()
             engine.setSpatial(amount: spatialAmount)
+            engine.setMasterVolume(muted ? 0 : volume)
             engine.play()
         } else {
             engine.pause()
@@ -78,5 +105,13 @@ final class BinauralViewModel {
     func setBeat(_ value: Double) {
         beatHz = value
         engine.setTone(carrier: carrierHz, beat: beatHz)
+    }
+
+    /// Pushes the full active-soundscape set to the engine (used on play).
+    private func syncAmbiences() {
+        for type in 1..<BinauralEngine.typeCount {
+            let on = activeAmbiences.contains { $0.code == type }
+            engine.setAmbientLevel(type: type, level: on ? ambienceLevel : 0)
+        }
     }
 }
