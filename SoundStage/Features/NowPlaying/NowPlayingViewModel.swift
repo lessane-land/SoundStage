@@ -41,10 +41,13 @@ final class NowPlayingViewModel {
         }
     }
 
-    func load(_ track: Track) {
+    func load(_ track: Track, autoPlay: Bool = true) {
         currentTrack = track
         isPlaying = false
         try? engine.load(track: track)
+        if autoPlay {
+            togglePlayback()
+        }
     }
 
     func apply(_ preset: Preset) {

@@ -10,6 +10,7 @@ struct NowPlayingView: View {
     @State var viewModel: NowPlayingViewModel
     @Environment(PresetStore.self) private var presetStore
     @State private var showPresetSelector = false
+    @State private var showLibrary = false
 
     var body: some View {
         ZStack {
@@ -37,6 +38,11 @@ struct NowPlayingView: View {
                 }
             )
         }
+        .sheet(isPresented: $showLibrary) {
+            LibraryView(viewModel: LibraryViewModel()) { track in
+                viewModel.load(track)
+            }
+        }
     }
 
     // MARK: - Sections
@@ -60,6 +66,14 @@ struct NowPlayingView: View {
                 .font(DesignTokens.Typography.title)
                 .foregroundStyle(DesignTokens.Palette.textPrimary)
             Spacer()
+            Button {
+                showLibrary = true
+            } label: {
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(DesignTokens.Palette.accent)
+            }
+            .accessibilityLabel("Browse library")
         }
     }
 
