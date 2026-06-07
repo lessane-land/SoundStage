@@ -46,10 +46,6 @@ final class AudioEngine: @unchecked Sendable {
     private var totalFrames: AVAudioFramePosition = 0
     /// Stereo mid/side width baked into decoded buffers (1 = unchanged).
     private var currentWidthFactor: Float = 1.0
-    /// Reverb factory preset currently loaded, so we only reload (which clicks)
-    /// when the room-size bucket actually changes — not on every slider tick.
-    private var currentReverbPreset: AVAudioUnitReverbPreset?
-
     // 16D rotation: the signature spinning-around-your-head effect, made by
     // sweeping the stereo pan with an LFO.
     private var rotationSpeed: Double = 0      // revolutions per second; 0 = off
@@ -163,28 +159,20 @@ final class AudioEngine: @unchecked Sendable {
 
     // MARK: - Presets
 
-    /// Applies the full preset, including stereo width (which re-decodes). Use
-    /// when committing a preset.
+    /// Commits a preset. Reverb/EQ update live (click-free); stereo width is
+    /// stored for the next track load (re-decoding mid-track would click).
     func apply(_ preset: Preset) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
-        applyReverbAndEQLocked(preset, reloadIR: true)
-
-        // Stereo Width is baked into decoded buffers. Gentle range (0.6...1.4)
-        // so widening stays clean. If it changed, re-decode from current spot.
-        let newWidth = 0.6 + clamp(preset.stereoWidth, 0, 1) * 0.8
-        if abs(newWidth - currentWidthFactor) > 0.01 {
-            currentWidthFactor = newWidth
-            reloadDecoderAtCurrentPositionLocked()
-        }
+        applyReverbAndEQLocked(preset)
+        currentWidthFactor = 0.6 + clamp(preset.stereoWidth, 0, 1) * 0.8
     }
 
-    /// Applies only the live-safe params (reverb space/depth + EQ), skipping the
-    /// width re-decode. Used for smooth slider previews while dragging.
+    /// Live preview while dragging the detail sliders (reverb/EQ only).
     func applyEffects(_ preset: Preset) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
-        applyReverbAndEQLocked(preset, reloadIR: false)
+        applyReverbAndEQLocked(preset)
     }
 
     // MARK: - 16D rotation
@@ -244,17 +232,11 @@ final class AudioEngine: @unchecked Sendable {
         engine.mainMixerNode.pan = max(-1, min(1, pan))
     }
 
-    private func applyReverbAndEQLocked(_ preset: Preset, reloadIR: Bool) {
-        // Room Size selects the reverberant space; Reverb Depth the wet amount.
-        // Reloading the IR clicks, so only do it on commit (never while dragging).
-        if reloadIR {
-            let newReverbPreset = Self.reverbPreset(forRoomSize: preset.roomSize)
-            if newReverbPreset != currentReverbPreset {
-                reverb.loadFactoryPreset(newReverbPreset)
-                currentReverbPreset = newReverbPreset
-            }
-        }
-        reverb.wetDryMix = clamp(preset.reverbBlend, 0, 1) * 100
+    private func applyReverbAndEQLocked(_ preset: Preset) {
+        // The reverb IR is fixed (set once); reloading it clicks. Room Size and
+        // Reverb Depth together just vary the wet amount — smooth, click-free.
+        let wet = clamp(preset.reverbBlend, 0, 1) * (0.35 + 0.65 * clamp(preset.roomSize, 0, 1))
+        reverb.wetDryMix = wet * 100
 
         for (index, band) in eq.bands.enumerated() {
             if index < preset.eqBands.count {
@@ -269,37 +251,6 @@ final class AudioEngine: @unchecked Sendable {
                 band.bypass = true
                 band.gain = 0
             }
-        }
-    }
-
-    private static func reverbPreset(forRoomSize roomSize: Float) -> AVAudioUnitReverbPreset {
-        switch roomSize {
-        case ..<0.2: return .smallRoom
-        case ..<0.4: return .mediumRoom
-        case ..<0.6: return .largeRoom
-        case ..<0.8: return .largeHall
-        default: return .cathedral
-        }
-    }
-
-    /// Rebuilds the decoder at the current playhead (used when stereo width
-    /// changes), preserving the playing/paused state.
-    private func reloadDecoderAtCurrentPositionLocked() {
-        guard let source else { return }
-        let frame = currentFrameLocked()
-        let wasPlaying = player.isPlaying
-
-        player.stop()
-        generation += 1
-        baseFrame = frame
-        lastReportedFrame = frame
-        atEnd = false
-        decoder = try? source.makeDecoder(fromFrame: frame, widthFactor: currentWidthFactor)
-        primeLocked()
-
-        if wasPlaying {
-            startEngineIfNeededLocked()
-            player.play()
         }
     }
 
@@ -344,8 +295,8 @@ final class AudioEngine: @unchecked Sendable {
         engine.connect(eq, to: reverb, format: processingFormat)
         engine.connect(reverb, to: engine.mainMixerNode, format: processingFormat)
 
-        reverb.loadFactoryPreset(.mediumHall)
-        currentReverbPreset = .mediumHall
+        // One fixed, spacious reverb voicing — never reloaded (reloading clicks).
+        reverb.loadFactoryPreset(.largeHall2)
         reverb.wetDryMix = 0
 
         // Headroom so EQ boosts + reverb + widening can't clip into distortion.
