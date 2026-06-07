@@ -46,6 +46,9 @@ final class AudioEngine: @unchecked Sendable {
     private var totalFrames: AVAudioFramePosition = 0
     /// Stereo mid/side width baked into decoded buffers (1 = unchanged).
     private var currentWidthFactor: Float = 1.0
+    /// Reverb factory preset currently loaded, so we only reload (which clicks)
+    /// when the room-size bucket actually changes — not on every slider tick.
+    private var currentReverbPreset: AVAudioUnitReverbPreset?
     /// Frame the current decoder started at (advances on seek).
     private var baseFrame: AVAudioFramePosition = 0
     /// Monotonic position cache so reported time never snaps backward.
@@ -180,7 +183,12 @@ final class AudioEngine: @unchecked Sendable {
 
     private func applyReverbAndEQLocked(_ preset: Preset) {
         // Room Size selects the reverberant space; Reverb Depth the wet amount.
-        reverb.loadFactoryPreset(Self.reverbPreset(forRoomSize: preset.roomSize))
+        // Reloading the IR clicks, so only do it when the bucket changes.
+        let newReverbPreset = Self.reverbPreset(forRoomSize: preset.roomSize)
+        if newReverbPreset != currentReverbPreset {
+            reverb.loadFactoryPreset(newReverbPreset)
+            currentReverbPreset = newReverbPreset
+        }
         reverb.wetDryMix = clamp(preset.reverbBlend, 0, 1) * 100
 
         for (index, band) in eq.bands.enumerated() {
@@ -271,6 +279,7 @@ final class AudioEngine: @unchecked Sendable {
         engine.connect(reverb, to: engine.mainMixerNode, format: processingFormat)
 
         reverb.loadFactoryPreset(.mediumHall)
+        currentReverbPreset = .mediumHall
         reverb.wetDryMix = 0
 
         isConfigured = true
