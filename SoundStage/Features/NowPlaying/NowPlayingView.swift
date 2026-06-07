@@ -32,13 +32,6 @@ struct NowPlayingView: View {
                 trackInfo
                     .padding(.top, 18)
 
-                if viewModel.isAppleMusic {
-                    Label("Spatial effects unavailable for Apple Music", systemImage: "info.circle")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.4))
-                        .padding(.top, 8)
-                }
-
                 Spacer(minLength: 8)
 
                 waveformSection
