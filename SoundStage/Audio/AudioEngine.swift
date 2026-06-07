@@ -261,7 +261,8 @@ final class AudioEngine: @unchecked Sendable {
                 let model = preset.eqBands[index]
                 band.filterType = model.filterType
                 band.frequency = model.frequency
-                band.gain = model.gain
+                // Halve the boosts/cuts so loud masters don't clip.
+                band.gain = model.gain * 0.5
                 band.bandwidth = model.bandwidth
                 band.bypass = false
             } else {
@@ -348,9 +349,8 @@ final class AudioEngine: @unchecked Sendable {
         reverb.wetDryMix = 0
 
         // Headroom so EQ boosts + reverb + widening can't clip into distortion.
-        // -6 dB global EQ gain compensates the per-band boosts.
-        eq.globalGain = -6
-        engine.mainMixerNode.outputVolume = 0.9
+        eq.globalGain = -3
+        engine.mainMixerNode.outputVolume = 0.85
 
         isConfigured = true
     }
