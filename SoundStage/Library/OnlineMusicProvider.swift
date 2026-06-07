@@ -124,9 +124,14 @@ struct InternetArchiveProvider: OnlineMusicProvider {
         guard let metaURL = URL(string: "https://archive.org/metadata/\(identifier)") else { return nil }
         let (data, _) = try await URLSession.shared.data(from: metaURL)
         let meta = try JSONDecoder().decode(IAMetadata.self, from: data)
-        // Prefer a plain MP3 file.
-        guard let file = meta.files.first(where: { ($0.name ?? "").lowercased().hasSuffix(".mp3") }),
-              let name = file.name,
+        // Archive serves an MP3 derivative even for FLAC/OGG/SHN originals; match
+        // by format ("VBR MP3"/"MP3") or a .mp3 name.
+        let file = meta.files.first { f in
+            let name = (f.name ?? "").lowercased()
+            let format = (f.format ?? "").lowercased()
+            return name.hasSuffix(".mp3") || format.contains("mp3")
+        }
+        guard let name = file?.name,
               let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
             return nil
         }

@@ -1,14 +1,17 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The library browser, presented as a sheet from the player.
 ///
-/// Renders the view model's state machine and a searchable track list.
-/// Selecting a track hands it back via `onSelect` with the surrounding queue.
+/// Renders the view model's state machine and a searchable track list, plus an
+/// "Import" action to bring in any DRM-free audio file (which the 16D engine
+/// can process). Selecting a track hands it back via `onSelect`.
 struct LibraryView: View {
     @State var viewModel: LibraryViewModel
     let onSelect: (Track, [Track]) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var showImporter = false
 
     var body: some View {
         NavigationStack {
@@ -17,6 +20,12 @@ struct LibraryView: View {
                 .navigationTitle("Library")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { showImporter = true } label: {
+                            Label("Import", systemImage: "plus")
+                                .foregroundStyle(DesignTokens.Palette.accent)
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }
                             .foregroundStyle(DesignTokens.Palette.accent)
@@ -25,6 +34,34 @@ struct LibraryView: View {
         }
         .presentationBackground(DesignTokens.Palette.backgroundPrimary)
         .task { await viewModel.loadIfNeeded() }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.audio], allowsMultipleSelection: false) { result in
+            importPicked(result)
+        }
+    }
+
+    /// Copies the picked DRM-free file into the app and plays it (16D-able).
+    private func importPicked(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, let source = urls.first else { return }
+        let accessed = source.startAccessingSecurityScopedResource()
+        defer { if accessed { source.stopAccessingSecurityScopedResource() } }
+
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(source.lastPathComponent)
+        try? FileManager.default.removeItem(at: dest)
+        guard (try? FileManager.default.copyItem(at: source, to: dest)) != nil else { return }
+
+        let track = Track(
+            id: "import:\(dest.lastPathComponent)",
+            title: source.deletingPathExtension().lastPathComponent,
+            artist: "Imported file",
+            albumTitle: "",
+            duration: 0,
+            assetURL: dest,
+            artworkID: nil,
+            isPlayable: true,
+            origin: .local
+        )
+        onSelect(track, [track])
+        dismiss()
     }
 
     @ViewBuilder
