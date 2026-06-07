@@ -20,9 +20,14 @@ struct BinauralView: View {
 
             VStack(spacing: 0) {
                 header
-                BinauralOrb(state: state, beatHz: viewModel.beatHz, spatial: viewModel.spatialAmount, isPlaying: viewModel.isPlaying)
-                    .frame(height: 300)
-                    .padding(.top, 4)
+                ZStack {
+                    BinauralAmbientLayer(soundscape: viewModel.ambience, color: state.toColor,
+                                         intensity: viewModel.ambienceLevel, isPlaying: viewModel.isPlaying)
+                    BinauralOrb(state: state, beatHz: viewModel.beatHz, spatial: viewModel.spatialAmount, isPlaying: viewModel.isPlaying)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 300)
+                .padding(.top, 4)
                 nameAndDesc
                 Spacer(minLength: 6)
                 ambienceChips.padding(.top, 8)
