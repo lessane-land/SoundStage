@@ -19,7 +19,7 @@ final class MusicBrowserViewModel {
     /// the Jamendo source. Internet Archive needs no key.
     static let jamendoClientID = "YOUR_JAMENDO_CLIENT_ID"
 
-    var source: MusicSource = .internetArchive {
+    var source: MusicSource = .deezer {
         didSet { if oldValue != source { onSourceChanged() } }
     }
     var query: String = ""
@@ -29,6 +29,7 @@ final class MusicBrowserViewModel {
     /// Hands the chosen (URL-resolved) track plus queue back to the player.
     var onPlay: ((Track, [Track]) -> Void)?
 
+    private let deezer = DeezerProvider()
     private let archive = InternetArchiveProvider()
     private let jamendo = JamendoProvider(clientID: MusicBrowserViewModel.jamendoClientID)
     private var searchTask: Task<Void, Never>?
@@ -38,6 +39,7 @@ final class MusicBrowserViewModel {
 
     private var provider: OnlineMusicProvider {
         switch source {
+        case .deezer: return deezer
         case .internetArchive: return archive
         case .jamendo: return jamendo
         }

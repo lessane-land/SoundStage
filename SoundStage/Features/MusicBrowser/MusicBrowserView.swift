@@ -98,8 +98,8 @@ struct MusicBrowserView: View {
     private var content: some View {
         switch viewModel.state {
         case .idle:
-            message(icon: "magnifyingglass", title: "Search for music",
-                    detail: "\(viewModel.source.title) tracks are DRM-free, so your spatial presets apply.")
+            message(icon: "magnifyingglass", title: "Search \(viewModel.source.title)",
+                    detail: viewModel.source.notice ?? "\(viewModel.source.title) tracks are DRM-free, so your spatial presets apply.")
         case .searching:
             ProgressView().tint(preset.toColor)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

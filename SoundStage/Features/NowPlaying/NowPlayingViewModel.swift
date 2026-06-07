@@ -133,8 +133,20 @@ final class NowPlayingViewModel {
             return
         }
         guard canGoNext else { return }
-        queueIndex += 1
-        load(queue[queueIndex])
+        playTrackAt(queueIndex + 1)
+    }
+
+    /// Plays the queue entry at `index`, routing by that track's own origin
+    /// (so a local track can be followed by a cloud one, and vice versa).
+    private func playTrackAt(_ index: Int) {
+        guard queue.indices.contains(index) else { return }
+        queueIndex = index
+        let track = queue[index]
+        if track.origin == .appleMusic {
+            playAppleMusic(track, in: queue)
+        } else {
+            load(track)
+        }
     }
 
     func previous() {
@@ -148,8 +160,7 @@ final class NowPlayingViewModel {
             elapsed = 0
             engine.seek(to: 0)
         } else {
-            queueIndex -= 1
-            load(queue[queueIndex])
+            playTrackAt(queueIndex - 1)
         }
     }
 
