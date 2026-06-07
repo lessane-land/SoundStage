@@ -24,8 +24,16 @@ final class BinauralEngine: @unchecked Sendable {
     private var tonesNode: AVAudioSourceNode?
     private var ambientNode: AVAudioSourceNode?
     private let reverb = AVAudioUnitReverb()
+    private let ambientMixer = AVAudioMixerNode()   // synth + sample submix → reverb
     private let sampleRate: Double = 44_100
     private var isConfigured = false
+
+    // Real looping field recordings (per soundscape) when bundled; otherwise the
+    // synth render covers that layer instead. `hasSample[type]` decides routing.
+    private var players = [Int: AVAudioPlayerNode]()
+    private var buffers = [Int: AVAudioPCMBuffer]()
+    private var hasSample = [Bool](repeating: false, count: typeCount)
+    private var playersScheduled = false
 
     // Parameters.
     private var carrierHz = 120.0
@@ -132,10 +140,18 @@ final class BinauralEngine: @unchecked Sendable {
         beatHz = max(0.5, beat)
     }
 
-    /// Sets the level (0...1) of one soundscape layer; 0 disables it.
+    /// Sets the level (0...1) of one soundscape layer; 0 disables it. Routes to
+    /// the real looping recording when one is bundled, else to the synth render.
     func setAmbientLevel(type: Int, level: Double) {
         guard type > 0, type < Self.typeCount else { return }
-        ambLevels[type] = Float(max(0, min(1, level)))
+        configureIfNeeded()   // ensure sample players exist before routing
+        let clamped = Float(max(0, min(1, level)))
+        if hasSample[type], let player = players[type] {
+            player.volume = clamped * 0.8        // loops are normalized → trim
+            ambLevels[type] = 0                  // synth stays silent for this layer
+        } else {
+            ambLevels[type] = clamped
+        }
     }
 
     func setSpatial(amount: Double) { spatialAmount = max(0, min(1, amount)) }
@@ -164,14 +180,33 @@ final class BinauralEngine: @unchecked Sendable {
             engine.prepare()
             try? engine.start()
         }
+        startPlayers()
         targetAmplitude = 0.9
     }
 
-    func pause() { targetAmplitude = 0.0 }
+    func pause() {
+        targetAmplitude = 0.0
+        players.values.forEach { $0.pause() }
+    }
 
     func stop() {
         targetAmplitude = 0.0
+        players.values.forEach { $0.stop() }
+        playersScheduled = false
         engine.stop()
+    }
+
+    /// (Re)schedules each looping recording if needed, then starts the players.
+    private func startPlayers() {
+        guard !players.isEmpty else { return }
+        if !playersScheduled {
+            for (type, player) in players {
+                guard let buffer = buffers[type] else { continue }
+                player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
+            }
+            playersScheduled = true
+        }
+        players.values.forEach { if !$0.isPlaying { $0.play() } }
     }
 
     // MARK: - Graph
@@ -192,14 +227,66 @@ final class BinauralEngine: @unchecked Sendable {
         engine.attach(tones)
         engine.attach(ambient)
         engine.attach(reverb)
+        engine.attach(ambientMixer)
         reverb.loadFactoryPreset(.mediumRoom)
         reverb.wetDryMix = 24
 
+        // Beat → main (clean). Synth ambient + sample players → submix → reverb → main.
         engine.connect(tones, to: engine.mainMixerNode, format: format)
-        engine.connect(ambient, to: reverb, format: format)
+        engine.connect(ambient, to: ambientMixer, format: format)
+        loadSamplePlayers(into: ambientMixer)
+        engine.connect(ambientMixer, to: reverb, format: format)
         engine.connect(reverb, to: engine.mainMixerNode, format: format)
         engine.mainMixerNode.outputVolume = 0.9
         isConfigured = true
+    }
+
+    /// Bundle file name for a soundscape type (drop `<name>.m4a` etc. in the app).
+    private func sampleName(_ type: Int) -> String? {
+        switch type {
+        case 1: return "rain"
+        case 2: return "ocean"
+        case 3: return "forest"
+        case 4: return "wind"
+        case 5: return "noise"
+        case 6: return "thunder"
+        case 7: return "fire"
+        case 8: return "cafe"
+        case 9: return "stream"
+        default: return nil
+        }
+    }
+
+    /// Loads any bundled loop files and connects a looping player per layer.
+    private func loadSamplePlayers(into mixer: AVAudioMixerNode) {
+        for type in 1..<Self.typeCount {
+            guard let name = sampleName(type), let buffer = loadBuffer(named: name) else { continue }
+            let player = AVAudioPlayerNode()
+            engine.attach(player)
+            engine.connect(player, to: mixer, format: buffer.format)
+            player.volume = 0
+            players[type] = player
+            buffers[type] = buffer
+            hasSample[type] = true
+        }
+    }
+
+    /// Reads a bundled audio file (any common type) fully into a PCM buffer.
+    private func loadBuffer(named name: String) -> AVAudioPCMBuffer? {
+        let extensions = ["m4a", "caf", "wav", "aif", "aiff", "mp3"]
+        for ext in extensions {
+            let url = Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Soundscapes")
+                ?? Bundle.main.url(forResource: name, withExtension: ext)
+            guard let url, let file = try? AVAudioFile(forReading: url) else { continue }
+            let frames = AVAudioFrameCount(file.length)
+            guard frames > 0,
+                  let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames) else { continue }
+            do {
+                try file.read(into: buffer)
+                return buffer
+            } catch { continue }
+        }
+        return nil
     }
 
     /// White noise in -1...1.
