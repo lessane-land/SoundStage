@@ -9,6 +9,7 @@ struct NowPlayingView: View {
 
     @State private var showPresetSelector = false
     @State private var showLibrary = false
+    @State private var showSearch = false
     @State private var shuffle = false
     @State private var repeatOn = false
 
@@ -64,6 +65,13 @@ struct NowPlayingView: View {
                 viewModel.play(track, in: queue)
             }
         }
+        .sheet(isPresented: $showSearch) {
+            MusicBrowserView(
+                viewModel: makeBrowserViewModel(),
+                preset: preset,
+                currentTrackID: viewModel.currentTrack.id
+            )
+        }
         .alert(
             "Can't play this track",
             isPresented: Binding(
@@ -112,10 +120,20 @@ struct NowPlayingView: View {
                     .lineLimit(1)
             }
             Spacer()
-            iconButton(systemName: "list.bullet", action: { showLibrary = true })
-                .accessibilityLabel("Browse library")
+            HStack(spacing: 2) {
+                iconButton(systemName: "music.note.list", action: { showLibrary = true })
+                    .accessibilityLabel("Browse library")
+                iconButton(systemName: "magnifyingglass", action: { showSearch = true })
+                    .accessibilityLabel("Search online music")
+            }
         }
         .frame(height: 44)
+    }
+
+    private func makeBrowserViewModel() -> MusicBrowserViewModel {
+        let browser = MusicBrowserViewModel()
+        browser.onPlay = { track, queue in viewModel.play(track, in: queue) }
+        return browser
     }
 
     private var albumLine: String {

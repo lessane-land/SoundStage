@@ -20,7 +20,10 @@ struct Track: Identifiable, Equatable, Sendable {
     let artist: String
     let albumTitle: String
     let duration: TimeInterval
-    let assetURL: URL?
+    /// The asset the engine decodes. Local file URL, or a remote DRM-free MP3
+    /// (Internet Archive / Jamendo) — `AVAssetReader` streams both. May be
+    /// resolved lazily for online results.
+    var assetURL: URL?
 
     /// Library persistent id used to look up artwork on demand. Stored as a
     /// plain `UInt64` so `Track` stays free of MediaPlayer types and `Sendable`.
@@ -38,6 +41,13 @@ struct Track: Identifiable, Equatable, Sendable {
 
     /// Remote artwork URL, loaded by `ArtworkView` when present.
     var artworkURL: URL? = nil
+
+    /// Returns a copy with the asset URL resolved (for online results).
+    func resolving(assetURL url: URL?) -> Track {
+        var copy = self
+        copy.assetURL = url
+        return copy
+    }
 
     /// `mm:ss` formatted duration for display.
     var formattedDuration: String {

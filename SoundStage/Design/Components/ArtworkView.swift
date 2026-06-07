@@ -39,7 +39,7 @@ struct ArtworkView: View {
                 .stroke(DesignTokens.Palette.cardStroke, lineWidth: 1)
         )
         .task(id: track.id) {
-            guard track.artworkURL == nil else { return }
+            guard track.artworkURL == nil, track.artworkID != nil else { return }
             image = await loader.image(for: track, size: CGSize(width: 600, height: 600))
         }
         .accessibilityHidden(true)
