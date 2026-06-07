@@ -18,6 +18,14 @@ struct BinauralTimerView: View {
     @State private var running = false
     @State private var fadeOut = true
     @State private var fadeLen = 0.4   // normalized over 1...15 min
+    @State private var windDown = false
+    @State private var startBeat = 0.0
+    @State private var elapsedInfinite = 0
+
+    /// Deep-Delta floor the beat descends toward during a wind-down.
+    private let descendFloor = 1.0
+    /// How long an open-ended (∞) wind-down takes to reach the floor.
+    private let infiniteDescendSeconds = 30 * 60
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -43,6 +51,7 @@ struct BinauralTimerView: View {
             .padding(.horizontal, 24)
         }
         .preferredColorScheme(.dark)
+        .onAppear { windDown = ["sleep", "relax", "meditate"].contains(state.id) }
         .onDisappear { stop() }
         .onReceive(timer) { _ in tick() }
     }
@@ -120,6 +129,9 @@ struct BinauralTimerView: View {
 
     private var options: some View {
         VStack(spacing: 10) {
+            BinauralGlassToggle(state: state, label: "Wind down",
+                                sub: "Gradually lower the beat toward deep Delta (1 Hz)",
+                                icon: "arrow.down.right.circle.fill", on: windDown, onChange: { windDown = $0 })
             BinauralGlassToggle(state: state, label: "Fade out",
                                 sub: "Gently lower volume over the last \(fadeMinutes) min",
                                 icon: "speaker.wave.1.fill", on: fadeOut, onChange: { fadeOut = $0 })
@@ -169,10 +181,15 @@ struct BinauralTimerView: View {
     }
 
     private func tick() {
-        guard running, !isInfinite else { return }
-        remaining = max(0, remaining - 1)
-        applyFade()
-        if remaining == 0 { finish() }
+        guard running else { return }
+        if !isInfinite {
+            remaining = max(0, remaining - 1)
+            applyFade()
+        } else {
+            elapsedInfinite += 1
+        }
+        applyWindDown()
+        if !isInfinite, remaining == 0 { finish() }
     }
 
     private func applyFade() {
@@ -185,9 +202,23 @@ struct BinauralTimerView: View {
         }
     }
 
+    /// Eases the beat from its starting value down to deep Delta over the session.
+    private func applyWindDown() {
+        guard windDown, startBeat > descendFloor else { return }
+        let fraction: Double
+        if let total = Self.presets[presetIndex].seconds {
+            fraction = total > 0 ? 1 - Double(remaining) / Double(total) : 1
+        } else {
+            fraction = min(1, Double(elapsedInfinite) / Double(infiniteDescendSeconds))
+        }
+        viewModel.setBeat(startBeat + (descendFloor - startBeat) * fraction)
+    }
+
     private func start() {
         if remaining == 0, let total = Self.presets[presetIndex].seconds { remaining = total }
         running = true
+        startBeat = viewModel.beatHz
+        elapsedInfinite = 0
         viewModel.restoreVolume()
         viewModel.setPlaying(true)
     }
@@ -195,6 +226,7 @@ struct BinauralTimerView: View {
     private func stop() {
         running = false
         viewModel.restoreVolume()
+        if windDown, startBeat > 0 { viewModel.setBeat(startBeat) }
     }
 
     private func finish() {
