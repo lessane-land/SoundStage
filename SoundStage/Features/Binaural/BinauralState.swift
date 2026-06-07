@@ -21,6 +21,38 @@ struct BinauralState: Identifiable, Equatable, Sendable {
     }
 }
 
+/// An ambient soundscape layered over the binaural beat (all synthesized).
+enum Ambience: String, CaseIterable, Identifiable {
+    case rain = "Rain"
+    case ocean = "Ocean"
+    case forest = "Forest"
+    case wind = "Wind"
+    case noise = "Noise"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .rain: return "cloud.rain.fill"
+        case .ocean: return "water.waves"
+        case .forest: return "tree.fill"
+        case .wind: return "wind"
+        case .noise: return "waveform"
+        }
+    }
+
+    /// Code the audio engine uses.
+    var code: Int {
+        switch self {
+        case .rain: return 1
+        case .ocean: return 2
+        case .forest: return 3
+        case .wind: return 4
+        case .noise: return 5
+        }
+    }
+}
+
 enum BinauralCatalog {
     static let all: [BinauralState] = [
         BinauralState(id: "sleep", name: "Deep Sleep", band: "Delta",
