@@ -65,7 +65,7 @@ final class AppleMusicService {
         nowPlayingID = trackID
         duration = start.duration ?? 0
         do {
-            try await player.play()
+            try await Self.sharedPlay()
             isPlaying = true
         } catch {
             isPlaying = false
@@ -78,7 +78,7 @@ final class AppleMusicService {
             isPlaying = false
         } else {
             do {
-                try await player.play()
+                try await Self.sharedPlay()
                 isPlaying = true
             } catch {
                 isPlaying = false
@@ -92,7 +92,7 @@ final class AppleMusicService {
     }
 
     func next() async {
-        try? await player.skipToNextEntry()
+        try? await Self.sharedSkipNext()
         syncCurrentEntry()
     }
 
@@ -100,9 +100,24 @@ final class AppleMusicService {
         if player.playbackTime > 3 {
             player.playbackTime = 0
         } else {
-            try? await player.skipToPreviousEntry()
+            try? await Self.sharedSkipPrevious()
             syncCurrentEntry()
         }
+    }
+
+    // The player's `async` methods are nonisolated and the player isn't
+    // Sendable, so we drive them through `.shared` inside a single nonisolated
+    // region rather than sending `self.player` across the actor boundary.
+    nonisolated private static func sharedPlay() async throws {
+        try await ApplicationMusicPlayer.shared.play()
+    }
+
+    nonisolated private static func sharedSkipNext() async throws {
+        try await ApplicationMusicPlayer.shared.skipToNextEntry()
+    }
+
+    nonisolated private static func sharedSkipPrevious() async throws {
+        try await ApplicationMusicPlayer.shared.skipToPreviousEntry()
     }
 
     func seek(to time: TimeInterval) {
