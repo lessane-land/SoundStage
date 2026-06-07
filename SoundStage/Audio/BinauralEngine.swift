@@ -44,6 +44,12 @@ final class BinauralEngine: @unchecked Sendable {
     private var toneLpR: Float = 0
     private var tonesAmp = 0.0
 
+    // Session-end chime (a soft three-partial bell).
+    private var chimeEnv: Float = 0
+    private var chimePh1 = 0.0
+    private var chimePh2 = 0.0
+    private var chimePh3 = 0.0
+
     // Shared noise + generic one-pole filter banks (per type, per ear).
     private var rng: UInt32 = 0x9E3779B9
     private var lpA_L = [Float](repeating: 0, count: typeCount)
@@ -135,6 +141,15 @@ final class BinauralEngine: @unchecked Sendable {
         engine.mainMixerNode.outputVolume = Float(max(0, min(1, value))) * 0.9
     }
 
+    /// Rings a soft bell (session complete). Engine must be running to be heard.
+    func playChime() {
+        configureIfNeeded()
+        activateSession()
+        if !engine.isRunning { engine.prepare(); try? engine.start() }
+        chimePh1 = 0; chimePh2 = 0; chimePh3 = 0
+        chimeEnv = 1
+    }
+
     // MARK: - Transport
 
     func play() {
@@ -216,6 +231,10 @@ final class BinauralEngine: @unchecked Sendable {
         let step = (target - tonesAmp) / Double(max(1, frames))
         let beatLevel: Float = 0.16   // the binaural beat itself
         let padLevel: Float = 0.11    // warm body so it isn't a bare sine
+        // Chime partials (G5 / D6 / G6).
+        let chimeInc1 = twoPi * 784 / sampleRate
+        let chimeInc2 = twoPi * 1176 / sampleRate
+        let chimeInc3 = twoPi * 1568 / sampleRate
 
         for frame in 0..<frames {
             tonesAmp += step
@@ -223,13 +242,23 @@ final class BinauralEngine: @unchecked Sendable {
             toneBreath += breathInc; if toneBreath > twoPi { toneBreath -= twoPi }
             let breath = Float(0.88 + 0.12 * sin(toneBreath))
             let pad = Float(sin(padPhase)) * padLevel * breath
-            let l = Float(sin(phaseLeft)) * beatLevel + pad
-            let r = Float(sin(phaseRight)) * beatLevel + pad
+            var l = Float(sin(phaseLeft)) * beatLevel + pad
+            var r = Float(sin(phaseRight)) * beatLevel + pad
             // Gentle one-pole smoothing rounds the very top edge / onset clicks.
             toneLpL += (l - toneLpL) * 0.6
             toneLpR += (r - toneLpR) * 0.6
-            left[frame] = toneLpL * env
-            right[frame] = toneLpR * env
+            l = toneLpL * env
+            r = toneLpR * env
+            if chimeEnv > 0.0005 {   // session-end bell, centered, independent of env
+                let bell = (Float(sin(chimePh1)) * 0.6 + Float(sin(chimePh2)) * 0.3 + Float(sin(chimePh3)) * 0.2) * chimeEnv * 0.22
+                l += bell; r += bell
+                chimePh1 += chimeInc1; if chimePh1 > twoPi { chimePh1 -= twoPi }
+                chimePh2 += chimeInc2; if chimePh2 > twoPi { chimePh2 -= twoPi }
+                chimePh3 += chimeInc3; if chimePh3 > twoPi { chimePh3 -= twoPi }
+                chimeEnv *= 0.99994
+            }
+            left[frame] = l
+            right[frame] = r
             phaseLeft += incLeft; if phaseLeft > twoPi { phaseLeft -= twoPi }
             phaseRight += incRight; if phaseRight > twoPi { phaseRight -= twoPi }
             padPhase += incPad; if padPhase > twoPi { padPhase -= twoPi }

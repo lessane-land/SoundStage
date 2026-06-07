@@ -5,6 +5,9 @@ import SwiftUI
 struct BinauralView: View {
     @State var viewModel: BinauralViewModel
     @State private var showTimer = false
+    @State private var showMixer = false
+    @State private var showPresets = false
+    @State private var showSettings = false
 
     private var state: BinauralState { viewModel.current }
 
@@ -21,7 +24,7 @@ struct BinauralView: View {
             VStack(spacing: 0) {
                 header
                 ZStack {
-                    BinauralAmbientLayer(soundscapes: viewModel.activeAmbiences, color: state.toColor,
+                    BinauralAmbientLayer(soundscapes: Set(viewModel.mix.keys), color: state.toColor,
                                          intensity: viewModel.ambienceLevel, isPlaying: viewModel.isPlaying)
                     BinauralOrb(state: state, beatHz: viewModel.beatHz, spatial: viewModel.spatialAmount, isPlaying: viewModel.isPlaying)
                 }
@@ -41,6 +44,24 @@ struct BinauralView: View {
         .animation(.easeInOut(duration: 0.5), value: state.id)
         .fullScreenCover(isPresented: $showTimer) {
             BinauralTimerView(state: state, viewModel: viewModel)
+        }
+        .sheet(isPresented: $showMixer) {
+            BinauralMixerSheet(viewModel: viewModel, state: state)
+                .presentationDetents([.fraction(0.85)])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(.clear)
+        }
+        .sheet(isPresented: $showPresets) {
+            BinauralPresetsSheet(viewModel: viewModel, state: state)
+                .presentationDetents([.fraction(0.85)])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(.clear)
+        }
+        .sheet(isPresented: $showSettings) {
+            BinauralSettingsSheet(viewModel: viewModel, state: state)
+                .presentationDetents([.fraction(0.62)])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(.clear)
         }
     }
 
@@ -66,18 +87,28 @@ struct BinauralView: View {
                 .foregroundStyle(.white.opacity(0.45))
             }
             Spacer()
-            Button { showTimer = true } label: {
-                Image(systemName: "timer")
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(.white.opacity(0.05)))
-                    .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 1))
+            HStack(spacing: 10) {
+                headerButton(icon: "star") { showPresets = true }
+                    .accessibilityLabel("Favorites")
+                headerButton(icon: "ellipsis") { showSettings = true }
+                    .accessibilityLabel("Settings")
+                headerButton(icon: "timer") { showTimer = true }
+                    .accessibilityLabel("Session timer")
             }
-            .accessibilityLabel("Session timer")
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)
+    }
+
+    private func headerButton(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(.white.opacity(0.05)))
+                .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 1))
+        }
     }
 
     private var nameAndDesc: some View {
@@ -94,33 +125,70 @@ struct BinauralView: View {
     private var ambienceChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 9) {
+                mixChip
+                Rectangle()
+                    .fill(.white.opacity(0.1))
+                    .frame(width: 1, height: 24)
                 ForEach(Ambience.allCases) { item in
-                    let on = viewModel.isActive(item)
-                    Button { viewModel.toggleAmbience(item) } label: {
-                        HStack(spacing: 7) {
-                            Image(systemName: item.icon)
-                                .font(.system(size: 14, weight: .semibold))
-                            Text(item.label)
-                                .font(.system(size: 13.5, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundStyle(on ? .white : .white.opacity(0.55))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(
-                            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .fill(on ? AnyShapeStyle(state.gradient.opacity(0.2)) : AnyShapeStyle(.white.opacity(0.04)))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .stroke(on ? state.toColor : .white.opacity(0.1), lineWidth: 1)
-                        )
-                        .shadow(color: on ? state.toColor.opacity(0.3) : .clear, radius: 12)
-                    }
-                    .buttonStyle(ScaleButtonStyle(pressedScale: 0.95))
+                    chip(for: item)
                 }
             }
             .padding(.horizontal, 24)
         }
+    }
+
+    private var mixChip: some View {
+        Button { showMixer = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Mix")
+                    .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                if viewModel.activeCount > 0 {
+                    Text("\(viewModel.activeCount)")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(state.toColor)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .padding(.horizontal, 5)
+                        .background(Capsule().fill(.white.opacity(0.95)))
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous).fill(state.gradient.opacity(0.16))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(state.toColor.opacity(0.5), lineWidth: 1)
+            )
+        }
+        .buttonStyle(ScaleButtonStyle(pressedScale: 0.95))
+    }
+
+    private func chip(for item: Ambience) -> some View {
+        let on = viewModel.isActive(item)
+        return Button { viewModel.toggleAmbience(item) } label: {
+            HStack(spacing: 7) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(item.label)
+                    .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(on ? .white : .white.opacity(0.55))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(on ? AnyShapeStyle(state.gradient.opacity(0.2)) : AnyShapeStyle(.white.opacity(0.04)))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(on ? state.toColor : .white.opacity(0.1), lineWidth: 1)
+            )
+            .shadow(color: on ? state.toColor.opacity(0.3) : .clear, radius: 12)
+        }
+        .buttonStyle(ScaleButtonStyle(pressedScale: 0.95))
     }
 
     private var sliders: some View {
@@ -128,7 +196,7 @@ struct BinauralView: View {
             BinauralSlider(state: state, label: "BEAT", valueText: beatText,
                            value: Binding(get: { (viewModel.beatHz - 1) / 39 }, set: { viewModel.setBeat(1 + $0 * 39) }))
             BinauralSlider(state: state, label: "TONE", valueText: "\(Int(viewModel.carrierHz)) Hz",
-                           value: Binding(get: { (viewModel.carrierHz - 100) / 220 }, set: { viewModel.setCarrier(100 + $0 * 220) }))
+                           value: Binding(get: { (viewModel.carrierHz - 80) / 240 }, set: { viewModel.setCarrier(80 + $0 * 240) }))
             BinauralSlider(state: state, label: "AMBIENCE", valueText: "\(Int(viewModel.ambienceLevel * 100))%",
                            value: Binding(get: { viewModel.ambienceLevel }, set: { viewModel.setAmbienceLevel($0) }))
             BinauralSlider(state: state, label: "SPATIAL", valueText: viewModel.spatialAmount < 0.04 ? "Off" : "\(Int(viewModel.spatialAmount * 100))%",

@@ -1,7 +1,8 @@
 import Foundation
 import Observation
 
-/// Drives the binaural generator screen.
+/// Drives the binaural generator screen, the soundscape mixer, favorites and
+/// settings — the single source of truth wired to the audio engine.
 @MainActor
 @Observable
 final class BinauralViewModel {
@@ -14,14 +15,19 @@ final class BinauralViewModel {
     private(set) var carrierHz: Double
     private(set) var beatHz: Double
 
-    /// Active ambient soundscapes (multi-select) sharing one master level.
-    private(set) var activeAmbiences: Set<Ambience> = []
-    private(set) var ambienceLevel: Double = 0.5
+    /// Per-layer soundscape mix (presence = active, value = layer volume 0...1).
+    private(set) var mix: [Ambience: Double] = [:]
+    /// Master ambience level (the AMBIENCE slider) scaling every layer.
+    private(set) var ambienceLevel: Double = 0.6
     private(set) var spatialAmount: Double = 0.4
 
-    /// Master output.
+    /// Master output + session options.
     private(set) var volume: Double = 0.85
     private(set) var muted = false
+    var chime = true
+
+    /// Favorites.
+    private(set) var presets: [BinauralPreset] = BinauralPresetStore.load()
 
     private let engine: BinauralEngine
     private let tracker = HeadTracker()
@@ -36,26 +42,53 @@ final class BinauralViewModel {
         tracker.start(onYaw: { engine.setHeadYaw($0) })
     }
 
-    /// Toggles a soundscape layer on/off.
+    // MARK: - Soundscape mix
+
+    var activeCount: Int { mix.count }
+    func isActive(_ value: Ambience) -> Bool { mix[value] != nil }
+    func layerVolume(_ value: Ambience) -> Double { mix[value] ?? 0.6 }
+
+    /// Toggles a soundscape on (default 60%) / off.
     func toggleAmbience(_ value: Ambience) {
-        if activeAmbiences.contains(value) {
-            activeAmbiences.remove(value)
+        if mix[value] != nil {
+            mix[value] = nil
             engine.setAmbientLevel(type: value.code, level: 0)
         } else {
-            activeAmbiences.insert(value)
-            engine.setAmbientLevel(type: value.code, level: ambienceLevel)
+            mix[value] = 0.6
+            pushLayer(value)
         }
     }
 
-    func isActive(_ value: Ambience) -> Bool { activeAmbiences.contains(value) }
+    /// Sets one layer's volume (within the mixer).
+    func setLayerVolume(_ value: Ambience, _ level: Double) {
+        mix[value] = level
+        pushLayer(value)
+    }
 
-    /// Sets the shared level for every active soundscape.
+    func clearMix() {
+        for key in mix.keys { engine.setAmbientLevel(type: key.code, level: 0) }
+        mix.removeAll()
+    }
+
+    /// Sets the master ambience level, rescaling every active layer.
     func setAmbienceLevel(_ value: Double) {
         ambienceLevel = value
-        for item in activeAmbiences {
-            engine.setAmbientLevel(type: item.code, level: value)
+        for key in mix.keys { pushLayer(key) }
+    }
+
+    private func pushLayer(_ value: Ambience) {
+        let level = (mix[value] ?? 0) * ambienceLevel
+        engine.setAmbientLevel(type: value.code, level: level)
+    }
+
+    private func syncAllLayers() {
+        for type in 1..<BinauralEngine.typeCount {
+            let active = mix.first { $0.key.code == type }
+            engine.setAmbientLevel(type: type, level: (active?.value ?? 0) * ambienceLevel)
         }
     }
+
+    // MARK: - Spatial & master
 
     func setSpatial(_ value: Double) {
         spatialAmount = value
@@ -68,16 +101,20 @@ final class BinauralViewModel {
         engine.setMasterVolume(value)
     }
 
-    func toggleMute() {
-        muted.toggle()
-        engine.setMasterVolume(muted ? 0 : volume)
+    func setMuted(_ value: Bool) {
+        muted = value
+        engine.setMasterVolume(value ? 0 : volume)
     }
+
+    func toggleMute() { setMuted(!muted) }
+
+    // MARK: - Transport
 
     func togglePlay() {
         isPlaying.toggle()
         if isPlaying {
             engine.setTone(carrier: carrierHz, beat: beatHz)
-            syncAmbiences()
+            syncAllLayers()
             engine.setSpatial(amount: spatialAmount)
             engine.setMasterVolume(muted ? 0 : volume)
             engine.play()
@@ -89,6 +126,21 @@ final class BinauralViewModel {
     func setPlaying(_ on: Bool) {
         if on != isPlaying { togglePlay() }
     }
+
+    /// Lowers master volume for a sleep fade (does not touch the saved volume).
+    func applyFade(_ factor: Double) {
+        engine.setMasterVolume(muted ? 0 : volume * max(0, min(1, factor)))
+    }
+
+    func restoreVolume() {
+        engine.setMasterVolume(muted ? 0 : volume)
+    }
+
+    func ringChime() {
+        if chime { engine.playChime() }
+    }
+
+    // MARK: - State / tone
 
     func select(_ state: BinauralState) {
         current = state
@@ -107,11 +159,41 @@ final class BinauralViewModel {
         engine.setTone(carrier: carrierHz, beat: beatHz)
     }
 
-    /// Pushes the full active-soundscape set to the engine (used on play).
-    private func syncAmbiences() {
-        for type in 1..<BinauralEngine.typeCount {
-            let on = activeAmbiences.contains { $0.code == type }
-            engine.setAmbientLevel(type: type, level: on ? ambienceLevel : 0)
-        }
+    // MARK: - Favorites
+
+    func saveCurrentPreset(named name: String) {
+        let preset = BinauralPreset(
+            id: "u\(Int(Date().timeIntervalSince1970 * 1000))",
+            name: name, stateId: current.id, beatHz: beatHz, carrierHz: carrierHz,
+            spatial: spatialAmount, ambienceLevel: ambienceLevel,
+            mix: Dictionary(uniqueKeysWithValues: mix.map { ($0.key.rawValue, $0.value) })
+        )
+        presets.append(preset)
+        persist()
     }
+
+    func renamePreset(_ preset: BinauralPreset, to name: String) {
+        guard let index = presets.firstIndex(where: { $0.id == preset.id }) else { return }
+        presets[index].name = name
+        persist()
+    }
+
+    func deletePreset(_ preset: BinauralPreset) {
+        presets.removeAll { $0.id == preset.id }
+        persist()
+    }
+
+    func loadPreset(_ preset: BinauralPreset) {
+        if let state = states.first(where: { $0.id == preset.stateId }) { current = state }
+        carrierHz = preset.carrierHz
+        beatHz = preset.beatHz
+        spatialAmount = preset.spatial
+        ambienceLevel = preset.ambienceLevel
+        mix = preset.ambienceMix
+        engine.setTone(carrier: carrierHz, beat: beatHz)
+        engine.setSpatial(amount: spatialAmount)
+        syncAllLayers()
+    }
+
+    private func persist() { BinauralPresetStore.save(presets) }
 }

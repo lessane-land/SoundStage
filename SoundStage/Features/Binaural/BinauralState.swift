@@ -27,11 +27,11 @@ enum Ambience: String, CaseIterable, Identifiable {
     case ocean = "Ocean"
     case forest = "Forest"
     case wind = "Wind"
-    case noise = "Noise"
     case thunder = "Thunder"
     case fire = "Fire"
     case cafe = "Café"
     case stream = "Stream"
+    case noise = "Noise"
 
     var id: String { rawValue }
 

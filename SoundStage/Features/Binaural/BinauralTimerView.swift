@@ -1,11 +1,11 @@
 import SwiftUI
 import Combine
 
-/// Session timer: a gradient countdown ring with duration presets, matching the
-/// design. Starting a session ensures playback; finishing stops it.
+/// Session timer: a gradient countdown ring with duration presets, an optional
+/// sleep fade-out and an end chime — matching the design's `TimerScreen`.
 struct BinauralTimerView: View {
     let state: BinauralState
-    let viewModel: BinauralViewModel
+    @Bindable var viewModel: BinauralViewModel
 
     @Environment(\.dismiss) private var dismiss
 
@@ -16,8 +16,12 @@ struct BinauralTimerView: View {
     @State private var presetIndex = 1
     @State private var remaining = 30 * 60
     @State private var running = false
+    @State private var fadeOut = true
+    @State private var fadeLen = 0.4   // normalized over 1...15 min
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    private var fadeMinutes: Int { Int((1 + fadeLen * 14).rounded()) }
 
     var body: some View {
         ZStack {
@@ -27,20 +31,20 @@ struct BinauralTimerView: View {
 
             VStack(spacing: 0) {
                 header
-                ring.padding(.top, 56)
-                presetRow.padding(.top, 44)
-                Spacer()
-                startStop.padding(.bottom, 44)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        ring.padding(.top, 28)
+                        presetRow.padding(.top, 32)
+                        options.padding(.top, 24)
+                    }
+                }
+                startStop.padding(.top, 8).padding(.bottom, 36)
             }
             .padding(.horizontal, 24)
         }
         .preferredColorScheme(.dark)
         .onDisappear { stop() }
-        .onReceive(timer) { _ in
-            guard running, !isInfinite else { return }
-            remaining = max(0, remaining - 1)
-            if remaining == 0 { finish() }
-        }
+        .onReceive(timer) { _ in tick() }
     }
 
     private var header: some View {
@@ -84,7 +88,7 @@ struct BinauralTimerView: View {
                     .foregroundStyle(.white.opacity(0.4))
             }
         }
-        .frame(width: 280, height: 280)
+        .frame(width: 252, height: 252)
     }
 
     private var presetRow: some View {
@@ -98,7 +102,7 @@ struct BinauralTimerView: View {
                     Text(preset.label)
                         .font(.system(size: preset.label == "\u{221E}" ? 24 : 19, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                        .frame(width: 60, height: 60)
+                        .frame(width: 58, height: 58)
                         .background(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .fill(on ? AnyShapeStyle(state.gradient) : AnyShapeStyle(.white.opacity(0.05)))
@@ -111,6 +115,23 @@ struct BinauralTimerView: View {
                 }
                 .buttonStyle(ScaleButtonStyle(pressedScale: 0.95))
             }
+        }
+    }
+
+    private var options: some View {
+        VStack(spacing: 10) {
+            BinauralGlassToggle(state: state, label: "Fade out",
+                                sub: "Gently lower volume over the last \(fadeMinutes) min",
+                                icon: "speaker.wave.1.fill", on: fadeOut, onChange: { fadeOut = $0 })
+            if fadeOut {
+                BinauralSlider(state: state, label: "FADE LENGTH", valueText: "\(fadeMinutes) min",
+                               value: $fadeLen)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 2)
+            }
+            BinauralGlassToggle(state: state, label: "Chime at end",
+                                sub: "Soft bell when the session completes",
+                                icon: "bell.fill", on: viewModel.chime, onChange: { viewModel.chime = $0 })
         }
     }
 
@@ -147,17 +168,39 @@ struct BinauralTimerView: View {
         return "\(remaining / 60):\(String(format: "%02d", remaining % 60))"
     }
 
+    private func tick() {
+        guard running, !isInfinite else { return }
+        remaining = max(0, remaining - 1)
+        applyFade()
+        if remaining == 0 { finish() }
+    }
+
+    private func applyFade() {
+        guard fadeOut else { return }
+        let window = fadeMinutes * 60
+        if remaining <= window, window > 0 {
+            viewModel.applyFade(Double(remaining) / Double(window))
+        } else {
+            viewModel.restoreVolume()
+        }
+    }
+
     private func start() {
+        if remaining == 0, let total = Self.presets[presetIndex].seconds { remaining = total }
         running = true
+        viewModel.restoreVolume()
         viewModel.setPlaying(true)
     }
 
     private func stop() {
         running = false
+        viewModel.restoreVolume()
     }
 
     private func finish() {
-        stop()
+        running = false
         viewModel.setPlaying(false)
+        viewModel.restoreVolume()
+        viewModel.ringChime()
     }
 }
