@@ -61,6 +61,15 @@ struct NowPlayingView: View {
                 viewModel.play(track, in: queue)
             }
         }
+        .alert(
+            "Can't play this track",
+            isPresented: Binding(
+                get: { viewModel.loadError != nil },
+                set: { if !$0 { viewModel.loadError = nil } }
+            ),
+            actions: { Button("OK", role: .cancel) { viewModel.loadError = nil } },
+            message: { Text(viewModel.loadError ?? "") }
+        )
     }
 
     // MARK: - Background
@@ -221,19 +230,30 @@ struct NowPlayingView: View {
 
             Spacer()
 
-            Button { viewModel.togglePlayback() } label: {
+            Button {
+                if viewModel.hasTrack {
+                    viewModel.togglePlayback()
+                } else {
+                    showLibrary = true
+                }
+            } label: {
                 ZStack {
                     Circle()
                         .fill(preset.gradient())
                         .frame(width: 68, height: 68)
                         .shadow(color: preset.toColor.opacity(0.5), radius: 22, y: 8)
-                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 28, weight: .medium))
-                        .foregroundStyle(.white)
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
                 }
             }
             .buttonStyle(ScaleButtonStyle(pressedScale: 0.92))
-            .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
+            .accessibilityLabel(viewModel.hasTrack ? (viewModel.isPlaying ? "Pause" : "Play") : "Choose a track")
 
             Spacer()
 

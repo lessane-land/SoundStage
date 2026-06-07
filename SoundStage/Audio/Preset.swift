@@ -54,9 +54,9 @@ struct Preset: Identifiable, Equatable, Sendable {
     var reverbBlend: Float
     /// Parametric EQ shape.
     var eqBands: [EQBand]
-    /// Perceptual room size 0.0...1.0, drives the environment node's reverb.
+    /// Perceptual room size 0.0...1.0, surfaced as a control in the detail editor.
     var roomSize: Float
-    /// Stereo spread 0.0...1.0 used by the spatial environment / detail editor.
+    /// Stereo spread 0.0...1.0, surfaced as a control in the detail editor.
     var stereoWidth: Float
 
     // Visual identity

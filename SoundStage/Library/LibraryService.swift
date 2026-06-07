@@ -41,11 +41,16 @@ final class LibraryService: LibraryProviding {
         return Self.map(raw)
     }
 
-    /// Fetches all songs in the library, mapped to `Track` values.
+    /// Fetches songs that have a local asset (so they can be decoded and played
+    /// through the engine), mapped to `Track` values. Cloud-only items without
+    /// an `assetURL` are skipped.
     func fetchSongs() async -> [Track] {
         let query = MPMediaQuery.songs()
         guard let items = query.items else { return [] }
-        return items.map(Self.track(from:))
+        return items.compactMap { item in
+            guard item.assetURL != nil else { return nil }
+            return Self.track(from: item)
+        }
     }
 
     // MARK: - Mapping

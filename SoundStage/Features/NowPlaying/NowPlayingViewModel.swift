@@ -5,8 +5,8 @@ import Observation
 ///
 /// Holds the current track, transport state, the active preset and live
 /// playback progress, delegating audio work to the (non-MainActor)
-/// `AudioEngine`. `@MainActor` so it can back SwiftUI state directly; engine
-/// calls are safe because `AudioEngine` is `Sendable` and internally serialized.
+/// `AudioEngine`. Loading decodes the asset asynchronously, so `load` kicks off
+/// a task and reflects `isLoading` / `loadError` for the UI.
 @MainActor
 @Observable
 final class NowPlayingViewModel {
@@ -14,6 +14,8 @@ final class NowPlayingViewModel {
     private(set) var currentTrack: Track
     private(set) var activePreset: Preset
     private(set) var isPlaying = false
+    private(set) var isLoading = false
+    var loadError: String?
 
     /// Elapsed / total playback time in seconds, refreshed by the ticker.
     private(set) var elapsed: TimeInterval = 0
@@ -29,6 +31,7 @@ final class NowPlayingViewModel {
     private let presetStore: PresetStore
     private let engine: AudioEngine
     private var ticker: Task<Void, Never>?
+    private var loadTask: Task<Void, Never>?
 
     init(presetStore: PresetStore, engine: AudioEngine = .shared) {
         self.presetStore = presetStore
@@ -42,6 +45,9 @@ final class NowPlayingViewModel {
         duration > 0 ? min(1, elapsed / duration) : 0
     }
 
+    /// Whether there's a real, playable track loaded.
+    var hasTrack: Bool { currentTrack.assetURL != nil }
+
     var canGoNext: Bool { queueIndex + 1 < queue.count }
     var canGoPrevious: Bool { !queue.isEmpty }
 
@@ -53,7 +59,7 @@ final class NowPlayingViewModel {
     }
 
     func togglePlayback() {
-        guard currentTrack.assetURL != nil else { return }
+        guard hasTrack, !isLoading else { return }
         isPlaying.toggle()
         if isPlaying {
             engine.play()
@@ -74,10 +80,32 @@ final class NowPlayingViewModel {
         currentTrack = track
         isPlaying = false
         elapsed = 0
-        try? engine.load(track: track)
-        duration = engine.duration
-        if autoPlay {
-            togglePlayback()
+        duration = 0
+        loadTask?.cancel()
+
+        guard track.assetURL != nil else {
+            loadError = "This track isn't available locally and can't be played through SoundStage."
+            return
+        }
+
+        isLoading = true
+        loadTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.engine.load(track: track)
+                if Task.isCancelled { return }
+                self.duration = self.engine.duration
+                self.isLoading = false
+                if autoPlay {
+                    self.isPlaying = true
+                    self.engine.play()
+                }
+            } catch is CancellationError {
+                // superseded by a newer load
+            } catch {
+                self.isLoading = false
+                self.loadError = "This track can't be played through SoundStage. It may be DRM-protected or stored only in the cloud."
+            }
         }
     }
 
@@ -108,17 +136,17 @@ final class NowPlayingViewModel {
     // MARK: - Scrubbing
 
     func beginSeeking() {
+        guard hasTrack else { return }
         isSeeking = true
     }
 
-    /// Updates the displayed position while dragging (no audio seek yet).
     func scrub(toFraction fraction: Double) {
         guard duration > 0 else { return }
         elapsed = max(0, min(1, fraction)) * duration
     }
 
-    /// Commits the scrub: seeks the engine and resumes ticker updates.
     func endSeeking() {
+        guard isSeeking else { return }
         engine.seek(to: elapsed)
         isSeeking = false
     }
