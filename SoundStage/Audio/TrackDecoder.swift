@@ -38,14 +38,17 @@ final class TrackSource {
         self.totalFrames = AVAudioFramePosition(safeSeconds * sampleRate)
     }
 
-    func makeDecoder(fromFrame startFrame: AVAudioFramePosition) throws -> TrackDecoder {
+    /// `widthFactor` is the stereo mid/side multiplier (1 = unchanged, 0 = mono,
+    /// >1 = wider) baked into the decoded buffers.
+    func makeDecoder(fromFrame startFrame: AVAudioFramePosition, widthFactor: Float) throws -> TrackDecoder {
         try TrackDecoder(
             asset: asset,
             track: assetTrack,
             format: format,
             sampleRate: sampleRate,
             channels: channels,
-            startFrame: startFrame
+            startFrame: startFrame,
+            widthFactor: widthFactor
         )
     }
 }
@@ -58,11 +61,13 @@ final class TrackDecoder {
     private let reader: AVAssetReader
     private let output: AVAssetReaderTrackOutput
     private let channels: Int
+    private let widthFactor: Float
 
     init(asset: AVURLAsset, track: AVAssetTrack, format: AVAudioFormat,
-         sampleRate: Double, channels: Int, startFrame: AVAudioFramePosition) throws {
+         sampleRate: Double, channels: Int, startFrame: AVAudioFramePosition, widthFactor: Float) throws {
         self.format = format
         self.channels = channels
+        self.widthFactor = widthFactor
         self.reader = try AVAssetReader(asset: asset)
 
         if startFrame > 0 {
@@ -103,9 +108,22 @@ final class TrackDecoder {
 
             var interleaved = [Float](repeating: 0, count: floatCount)
             CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: byteCount, destination: &interleaved)
-            for frame in 0..<Int(frames) {
-                for channel in 0..<channels {
-                    channelData[channel][frame] = interleaved[frame * channels + channel]
+
+            if channels == 2 {
+                // Mid/side stereo widening baked into the buffer.
+                for frame in 0..<Int(frames) {
+                    let left = interleaved[frame * 2]
+                    let right = interleaved[frame * 2 + 1]
+                    let mid = (left + right) * 0.5
+                    let side = (left - right) * 0.5 * widthFactor
+                    channelData[0][frame] = max(-1, min(1, mid + side))
+                    channelData[1][frame] = max(-1, min(1, mid - side))
+                }
+            } else {
+                for frame in 0..<Int(frames) {
+                    for channel in 0..<channels {
+                        channelData[channel][frame] = interleaved[frame * channels + channel]
+                    }
                 }
             }
             buffer.frameLength = frames

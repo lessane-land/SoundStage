@@ -41,6 +41,8 @@ final class AudioEngine: @unchecked Sendable {
     private var isConfigured = false
 
     private var totalFrames: AVAudioFramePosition = 0
+    /// Stereo mid/side width baked into decoded buffers (1 = unchanged).
+    private var currentWidthFactor: Float = 1.0
     /// Frame the current decoder started at (advances on seek).
     private var baseFrame: AVAudioFramePosition = 0
     /// Monotonic position cache so reported time never snaps backward.
@@ -86,8 +88,14 @@ final class AudioEngine: @unchecked Sendable {
     func load(track: Track) async throws {
         guard let url = track.assetURL else { throw AudioEngineError.trackHasNoAsset }
         let source = try await TrackSource(url: url, sampleRate: sampleRate)
-        let decoder = try source.makeDecoder(fromFrame: 0)
+        let decoder = try source.makeDecoder(fromFrame: 0, widthFactor: snapshotWidthFactor())
         install(source: source, decoder: decoder)
+    }
+
+    /// Reads the current width factor under the lock (safe from the async load).
+    private func snapshotWidthFactor() -> Float {
+        lock.lock(); defer { lock.unlock() }
+        return currentWidthFactor
     }
 
     private func install(source: TrackSource, decoder: TrackDecoder) {
@@ -132,7 +140,7 @@ final class AudioEngine: @unchecked Sendable {
         baseFrame = frame
         lastReportedFrame = frame
         atEnd = false
-        decoder = try? source.makeDecoder(fromFrame: frame)
+        decoder = try? source.makeDecoder(fromFrame: frame, widthFactor: currentWidthFactor)
         primeLocked()
 
         if wasPlaying {
@@ -147,7 +155,8 @@ final class AudioEngine: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
 
-        reverb.loadFactoryPreset(preset.reverbPreset)
+        // Room Size selects the reverberant space; Reverb Depth the wet amount.
+        reverb.loadFactoryPreset(Self.reverbPreset(forRoomSize: preset.roomSize))
         reverb.wetDryMix = clamp(preset.reverbBlend, 0, 1) * 100
 
         for (index, band) in eq.bands.enumerated() {
@@ -162,6 +171,45 @@ final class AudioEngine: @unchecked Sendable {
                 band.bypass = true
                 band.gain = 0
             }
+        }
+
+        // Stereo Width is baked into decoded buffers (0.5 -> normal). If it
+        // changed for a loaded track, re-decode from the current position.
+        let newWidth = clamp(preset.stereoWidth, 0, 1) * 2
+        if abs(newWidth - currentWidthFactor) > 0.01 {
+            currentWidthFactor = newWidth
+            reloadDecoderAtCurrentPositionLocked()
+        }
+    }
+
+    private static func reverbPreset(forRoomSize roomSize: Float) -> AVAudioUnitReverbPreset {
+        switch roomSize {
+        case ..<0.2: return .smallRoom
+        case ..<0.4: return .mediumRoom
+        case ..<0.6: return .largeRoom
+        case ..<0.8: return .largeHall
+        default: return .cathedral
+        }
+    }
+
+    /// Rebuilds the decoder at the current playhead (used when stereo width
+    /// changes), preserving the playing/paused state.
+    private func reloadDecoderAtCurrentPositionLocked() {
+        guard let source else { return }
+        let frame = currentFrameLocked()
+        let wasPlaying = player.isPlaying
+
+        player.stop()
+        generation += 1
+        baseFrame = frame
+        lastReportedFrame = frame
+        atEnd = false
+        decoder = try? source.makeDecoder(fromFrame: frame, widthFactor: currentWidthFactor)
+        primeLocked()
+
+        if wasPlaying {
+            startEngineIfNeededLocked()
+            player.play()
         }
     }
 
