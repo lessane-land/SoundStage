@@ -22,12 +22,6 @@ final class NowPlayingViewModel {
     private(set) var queue: [Track] = []
     private(set) var queueIndex = 0
 
-    // Export ("Save 16D")
-    private(set) var isExporting = false
-    private(set) var exportProgress: Double = 0
-    var exportedFileURL: URL?
-    private var exportPendingURL: URL?
-
     private let presetStore: PresetStore
     private let engine: AudioEngine
     private let systemPlayer: SystemMusicPlayer?
@@ -199,60 +193,6 @@ final class NowPlayingViewModel {
         engine.setRotation(speed: rotationAmount * 0.3)
     }
 
-    // MARK: - Export
-
-    /// Whether the current track can be exported (engine-processed audio only).
-    var canExport: Bool { hasTrack && !isAppleMusic && duration > 0 && !isLoading }
-
-    /// Renders the current track (with EQ/reverb/16D) to an .m4a by recording
-    /// playback from the start. Completes when the track finishes.
-    func startExport() {
-        guard canExport, !isExporting else { return }
-        let name = Self.sanitizedFileName(currentTrack.title)
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SoundStage 16D - \(name).m4a")
-        try? FileManager.default.removeItem(at: url)
-        do {
-            try engine.startRecording(to: url)
-        } catch {
-            loadError = "Couldn't start the export."
-            return
-        }
-        exportPendingURL = url
-        isExporting = true
-        exportProgress = 0
-        elapsed = 0
-        engine.seek(to: 0)
-        isPlaying = true
-        engine.play()
-    }
-
-    func cancelExport() {
-        guard isExporting else { return }
-        engine.stopRecording()
-        engine.pause()
-        isPlaying = false
-        isExporting = false
-        exportPendingURL = nil
-    }
-
-    private func finishExport() {
-        engine.stopRecording()
-        engine.pause()
-        isPlaying = false
-        isExporting = false
-        exportProgress = 1
-        exportedFileURL = exportPendingURL
-        exportPendingURL = nil
-    }
-
-    private static func sanitizedFileName(_ raw: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(.whitespaces)
-        let cleaned = String(raw.unicodeScalars.filter { allowed.contains($0) })
-            .trimmingCharacters(in: .whitespaces)
-        return cleaned.isEmpty ? "Track" : cleaned
-    }
-
     /// Live-applies a preset's reverb/EQ while the user drags the detail sliders,
     /// without committing it as the active preset.
     func previewPreset(_ preset: Preset) {
@@ -315,13 +255,8 @@ final class NowPlayingViewModel {
         duration = engine.duration
         if isPlaying {
             elapsed = engine.currentTime
-            if isExporting {
-                exportProgress = duration > 0 ? min(1, elapsed / duration) : 0
-            }
             if duration > 0, elapsed >= duration - 0.05 {
-                if isExporting {
-                    finishExport()
-                } else if canGoNext {
+                if canGoNext {
                     next()
                 } else {
                     elapsed = duration

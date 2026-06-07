@@ -59,8 +59,6 @@ final class AudioEngine: @unchecked Sendable {
     private var generation = 0
     /// Set when the decoder is exhausted (so end-of-track can be reported).
     private var atEnd = false
-    /// Destination file while exporting the processed (16D) output.
-    private var recordingFile: AVAudioFile?
 
     private init() {}
 
@@ -175,36 +173,6 @@ final class AudioEngine: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
         applyReverbAndEQLocked(preset)
-    }
-
-    // MARK: - Export (record the processed output)
-
-    /// Starts capturing the final processed output (EQ + reverb + 16D) to an
-    /// `.m4a` file via a tap on the main mixer. Pair with playback from 0.
-    func startRecording(to url: URL) throws {
-        lock.lock(); defer { lock.unlock() }
-        configureIfNeeded()
-        let format = engine.mainMixerNode.outputFormat(forBus: 0)
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount
-        ]
-        recordingFile = try AVAudioFile(forWriting: url, settings: settings)
-        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            self?.writeRecording(buffer)
-        }
-    }
-
-    func stopRecording() {
-        lock.lock(); defer { lock.unlock() }
-        engine.mainMixerNode.removeTap(onBus: 0)
-        recordingFile = nil
-    }
-
-    private func writeRecording(_ buffer: AVAudioPCMBuffer) {
-        lock.lock(); defer { lock.unlock() }
-        try? recordingFile?.write(from: buffer)
     }
 
     // MARK: - 16D rotation
