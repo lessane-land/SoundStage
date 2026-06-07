@@ -38,6 +38,10 @@ final class BinauralEngine: @unchecked Sendable {
     // Tones state.
     private var phaseLeft = 0.0
     private var phaseRight = 0.0
+    private var padPhase = 0.0      // warm mono sub-octave drone
+    private var toneBreath = 0.0    // slow amplitude breathing
+    private var toneLpL: Float = 0  // gentle smoothing per ear
+    private var toneLpR: Float = 0
     private var tonesAmp = 0.0
 
     // Shared noise + generic one-pole filter banks (per type, per ear).
@@ -94,6 +98,12 @@ final class BinauralEngine: @unchecked Sendable {
     private var thunCrack: Float = 0
     private var thunTimer = 4.0
     private var thunPan: Float = 0.5
+
+    // Café: sparse cup/spoon clink over a dark murmur.
+    private var cafeEnv: Float = 0
+    private var cafePh = 0.0
+    private var cafeInc = 0.0
+    private var cafePan: Float = 0.5
 
     // Slow shared LFOs + spatial orbits.
     private var waveLFO = 0.0
@@ -200,17 +210,29 @@ final class BinauralEngine: @unchecked Sendable {
         let twoPi = 2 * Double.pi
         let incLeft = twoPi * (carrierHz - beatHz / 2) / sampleRate
         let incRight = twoPi * (carrierHz + beatHz / 2) / sampleRate
+        let incPad = twoPi * (carrierHz * 0.5) / sampleRate   // sub-octave, centered
+        let breathInc = twoPi * 0.08 / sampleRate
         let target = targetAmplitude
         let step = (target - tonesAmp) / Double(max(1, frames))
-        let level: Float = 0.2
+        let beatLevel: Float = 0.16   // the binaural beat itself
+        let padLevel: Float = 0.11    // warm body so it isn't a bare sine
 
         for frame in 0..<frames {
             tonesAmp += step
             let env = Float(tonesAmp)
-            left[frame] = Float(sin(phaseLeft)) * level * env
-            right[frame] = Float(sin(phaseRight)) * level * env
+            toneBreath += breathInc; if toneBreath > twoPi { toneBreath -= twoPi }
+            let breath = Float(0.88 + 0.12 * sin(toneBreath))
+            let pad = Float(sin(padPhase)) * padLevel * breath
+            let l = Float(sin(phaseLeft)) * beatLevel + pad
+            let r = Float(sin(phaseRight)) * beatLevel + pad
+            // Gentle one-pole smoothing rounds the very top edge / onset clicks.
+            toneLpL += (l - toneLpL) * 0.6
+            toneLpR += (r - toneLpR) * 0.6
+            left[frame] = toneLpL * env
+            right[frame] = toneLpR * env
             phaseLeft += incLeft; if phaseLeft > twoPi { phaseLeft -= twoPi }
             phaseRight += incRight; if phaseRight > twoPi { phaseRight -= twoPi }
+            padPhase += incPad; if padPhase > twoPi { padPhase -= twoPi }
         }
         tonesAmp = target
         return noErr
@@ -233,8 +255,9 @@ final class BinauralEngine: @unchecked Sendable {
         let waveInc = twoPi * 0.09 / sampleRate
         let windInc = twoPi * 0.06 / sampleRate
         // Two incommensurate orbit rates so the pan never feels metronomic.
-        let rotIncA = twoPi * (0.10 + spatialAmount * 0.20) / sampleRate
-        let rotIncB = twoPi * (0.043 + spatialAmount * 0.085) / sampleRate
+        // Kept slow + gentle: fast circling is a dizziness/motion-sickness trigger.
+        let rotIncA = twoPi * (0.055 + spatialAmount * 0.11) / sampleRate
+        let rotIncB = twoPi * (0.028 + spatialAmount * 0.05) / sampleRate
         let depth = Float(spatialAmount)
         let yaw = Float(headYaw)
 
@@ -411,25 +434,39 @@ final class BinauralEngine: @unchecked Sendable {
                 ambL += l * lvl; ambR += r * lvl
             }
 
-            // 8 — CAFÉ: warm midrange murmur with a slow crowd swell.
+            // 8 — CAFÉ: dark, warm crowd murmur (no hiss) + sparse cup clink.
             if ambLevels[8] > 0 {
                 let lvl = ambLevels[8]
                 let nL = nextNoise(), nR = nextNoise()
-                lpA_L[8] += (nL - lpA_L[8]) * 0.3; lpB_L[8] += (lpA_L[8] - lpB_L[8]) * 0.05
-                lpA_R[8] += (nR - lpA_R[8]) * 0.3; lpB_R[8] += (lpA_R[8] - lpB_R[8]) * 0.05
-                let l = (lpA_L[8] - lpB_L[8]) * 2.3 * cafeMod
-                let r = (lpA_R[8] - lpB_R[8]) * 2.3 * cafeMod
+                lpA_L[8] += (nL - lpA_L[8]) * 0.05   // heavy lowpass → low murmur
+                lpA_R[8] += (nR - lpA_R[8]) * 0.05
+                var l = lpA_L[8] * 4.2 * cafeMod
+                var r = lpA_R[8] * 4.2 * cafeMod
+                if nextUniform() < 0.0006 {          // occasional cup / spoon clink
+                    cafeEnv = 0.05 + nextUniform() * 0.10
+                    cafeInc = twoPi * (1700 + Double(nextUniform()) * 1500) / sampleRate
+                    cafePan = nextUniform(); cafePh = 0
+                }
+                if cafeEnv > 0.0006 {
+                    cafePh += cafeInc
+                    let s = Float(sin(cafePh)) * cafeEnv
+                    let (gL, gR) = panGains(cafePan)
+                    l += s * gL; r += s * gR
+                    cafeEnv *= 0.990
+                }
                 ambL += l * lvl; ambR += r * lvl
             }
 
-            // 9 — STREAM: bright water wash + irregular bubble blips.
+            // 9 — STREAM: flowing water — low gurgle + light trickle + bubbles.
             if ambLevels[9] > 0 {
                 let lvl = ambLevels[9]
                 let nL = nextNoise(), nR = nextNoise()
-                lpA_L[9] += (nL - lpA_L[9]) * 0.55; lpA_R[9] += (nR - lpA_R[9]) * 0.55
-                var l = (nL - lpA_L[9]) * 0.5
-                var r = (nR - lpA_R[9]) * 0.5
-                if nextUniform() < 0.006 {
+                lpA_L[9] += (nL - lpA_L[9]) * 0.5; lpA_R[9] += (nR - lpA_R[9]) * 0.5
+                brownL[9] += nL * 0.012; brownL[9] *= 0.99   // watery low movement
+                brownR[9] += nR * 0.012; brownR[9] *= 0.99
+                var l = (nL - lpA_L[9]) * 0.26 + brownL[9] * 1.7
+                var r = (nR - lpA_R[9]) * 0.26 + brownR[9] * 1.7
+                if nextUniform() < 0.010 {
                     let i = freeVoice(bubEnv)
                     bubEnv[i] = 0.15 + nextUniform() * 0.3
                     bubInc[i] = twoPi * (500 + Double(nextUniform()) * 700) / sampleRate

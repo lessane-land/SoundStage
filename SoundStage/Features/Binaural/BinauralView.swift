@@ -128,7 +128,7 @@ struct BinauralView: View {
             BinauralSlider(state: state, label: "BEAT", valueText: beatText,
                            value: Binding(get: { (viewModel.beatHz - 1) / 39 }, set: { viewModel.setBeat(1 + $0 * 39) }))
             BinauralSlider(state: state, label: "TONE", valueText: "\(Int(viewModel.carrierHz)) Hz",
-                           value: Binding(get: { (viewModel.carrierHz - 55) / 100 }, set: { viewModel.setCarrier(55 + $0 * 100) }))
+                           value: Binding(get: { (viewModel.carrierHz - 100) / 220 }, set: { viewModel.setCarrier(100 + $0 * 220) }))
             BinauralSlider(state: state, label: "AMBIENCE", valueText: "\(Int(viewModel.ambienceLevel * 100))%",
                            value: Binding(get: { viewModel.ambienceLevel }, set: { viewModel.setAmbienceLevel($0) }))
             BinauralSlider(state: state, label: "SPATIAL", valueText: viewModel.spatialAmount < 0.04 ? "Off" : "\(Int(viewModel.spatialAmount * 100))%",

@@ -70,25 +70,25 @@ enum Ambience: String, CaseIterable, Identifiable {
 enum BinauralCatalog {
     static let all: [BinauralState] = [
         BinauralState(id: "sleep", name: "Deep Sleep", band: "Delta",
-                      detail: "Drift into deep, dreamless rest", beatHz: 2.5, carrierHz: 90,
+                      detail: "Drift into deep, dreamless rest", beatHz: 2.5, carrierHz: 158,
                       fromHex: 0x3D8BFF, toHex: 0x7A8EFF),
         BinauralState(id: "relax", name: "Relax", band: "Theta",
-                      detail: "Let the day melt away", beatHz: 4, carrierHz: 100,
+                      detail: "Let the day melt away", beatHz: 4, carrierHz: 164,
                       fromHex: 0x00D2FF, toHex: 0x0066FF),
         BinauralState(id: "meditate", name: "Meditate", band: "Theta",
-                      detail: "Settle into calm awareness", beatHz: 6, carrierHz: 105,
+                      detail: "Settle into calm awareness", beatHz: 6, carrierHz: 168,
                       fromHex: 0x13C57A, toHex: 0x7BFF5E),
         BinauralState(id: "focus", name: "Focus", band: "Alpha",
-                      detail: "Clear, sustained concentration", beatHz: 10, carrierHz: 110,
+                      detail: "Clear, sustained concentration", beatHz: 10, carrierHz: 174,
                       fromHex: 0x6C5CE7, toHex: 0xC56BFF),
         BinauralState(id: "flow", name: "Flow", band: "Beta",
-                      detail: "Effortless creative momentum", beatHz: 16, carrierHz: 120,
+                      detail: "Effortless creative momentum", beatHz: 16, carrierHz: 180,
                       fromHex: 0xFF7A45, toHex: 0xFFC83D),
         BinauralState(id: "energy", name: "Energy", band: "Beta",
-                      detail: "Bright, awake, ready to move", beatHz: 22, carrierHz: 130,
+                      detail: "Bright, awake, ready to move", beatHz: 22, carrierHz: 188,
                       fromHex: 0xFF1F3D, toHex: 0xFF7A45),
         BinauralState(id: "sharp", name: "Sharp", band: "Gamma",
-                      detail: "Peak alertness and recall", beatHz: 38, carrierHz: 140,
+                      detail: "Peak alertness and recall", beatHz: 38, carrierHz: 196,
                       fromHex: 0xFFC83D, toHex: 0xFF7A45)
     ]
 
