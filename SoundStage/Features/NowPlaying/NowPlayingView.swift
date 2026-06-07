@@ -51,9 +51,12 @@ struct NowPlayingView: View {
         .onAppear { viewModel.prepare() }
         .sheet(isPresented: $showPresetSelector) {
             PresetSelectorView(
-                viewModel: PresetSelectorViewModel(store: presetStore) { applied in
-                    viewModel.apply(applied)
-                }
+                viewModel: PresetSelectorViewModel(
+                    store: presetStore,
+                    onApply: { viewModel.apply($0) },
+                    onPreview: { viewModel.previewPreset($0) },
+                    onCancelPreview: { viewModel.cancelPreview() }
+                )
             )
         }
         .sheet(isPresented: $showLibrary) {

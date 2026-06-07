@@ -49,13 +49,16 @@ final class LibraryViewModel {
         case .authorized:
             await load()
         case .denied, .restricted:
-            state = .accessDenied
+            // Still surface the bundled demo so the engine can be tried.
+            tracks = demoTracks
+            state = tracks.isEmpty ? .accessDenied : .loaded
         case .notDetermined:
             state = .requestingAccess
             if await service.requestAuthorization() == .authorized {
                 await load()
             } else {
-                state = .accessDenied
+                tracks = demoTracks
+                state = tracks.isEmpty ? .accessDenied : .loaded
             }
         }
     }
@@ -69,7 +72,12 @@ final class LibraryViewModel {
     private func load() async {
         state = .loading
         let fetched = await service.fetchSongs()
-        tracks = fetched
-        state = fetched.isEmpty ? .empty : .loaded
+        tracks = demoTracks + fetched
+        state = tracks.isEmpty ? .empty : .loaded
+    }
+
+    /// The bundled demo, pinned to the top when present.
+    private var demoTracks: [Track] {
+        Track.demo.map { [$0] } ?? []
     }
 }

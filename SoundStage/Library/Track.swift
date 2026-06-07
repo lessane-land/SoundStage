@@ -58,4 +58,21 @@ extension Track {
         artworkID: nil,
         isPlayable: false
     )
+
+    /// A bundled, local demo track so the spatial engine can always be heard,
+    /// regardless of what's in (or streaming into) the user's library.
+    static var demo: Track? {
+        guard let url = Bundle.main.url(forResource: "demo", withExtension: "wav") else { return nil }
+        return Track(
+            id: "soundstage-demo",
+            title: "SoundStage Demo",
+            artist: "Spatial test - drag the sliders",
+            albumTitle: "",
+            duration: 0,
+            assetURL: url,
+            artworkID: nil,
+            isPlayable: true,
+            origin: .local
+        )
+    }
 }

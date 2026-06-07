@@ -158,6 +158,17 @@ final class NowPlayingViewModel {
         engine.apply(preset)
     }
 
+    /// Live-applies a preset's reverb/EQ while the user drags the detail sliders,
+    /// without committing it as the active preset.
+    func previewPreset(_ preset: Preset) {
+        engine.applyEffects(preset)
+    }
+
+    /// Reverts a live preview back to the committed preset.
+    func cancelPreview() {
+        engine.applyEffects(activePreset)
+    }
+
     // MARK: - Scrubbing
 
     func beginSeeking() {

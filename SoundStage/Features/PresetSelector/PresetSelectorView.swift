@@ -57,7 +57,11 @@ struct PresetSelectorView: View {
                     detailPreset = nil
                     dismiss()
                 },
-                onClose: { detailPreset = nil }
+                onClose: {
+                    viewModel.onCancelPreview?()
+                    detailPreset = nil
+                },
+                onPreview: { viewModel.onPreview?($0) }
             )
         }
     }

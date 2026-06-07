@@ -154,10 +154,31 @@ final class AudioEngine: @unchecked Sendable {
 
     // MARK: - Presets
 
+    /// Applies the full preset, including stereo width (which re-decodes). Use
+    /// when committing a preset.
     func apply(_ preset: Preset) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
+        applyReverbAndEQLocked(preset)
 
+        // Stereo Width is baked into decoded buffers (0.5 -> normal). If it
+        // changed for a loaded track, re-decode from the current position.
+        let newWidth = clamp(preset.stereoWidth, 0, 1) * 2
+        if abs(newWidth - currentWidthFactor) > 0.01 {
+            currentWidthFactor = newWidth
+            reloadDecoderAtCurrentPositionLocked()
+        }
+    }
+
+    /// Applies only the live-safe params (reverb space/depth + EQ), skipping the
+    /// width re-decode. Used for smooth slider previews while dragging.
+    func applyEffects(_ preset: Preset) {
+        lock.lock(); defer { lock.unlock() }
+        configureIfNeeded()
+        applyReverbAndEQLocked(preset)
+    }
+
+    private func applyReverbAndEQLocked(_ preset: Preset) {
         // Room Size selects the reverberant space; Reverb Depth the wet amount.
         reverb.loadFactoryPreset(Self.reverbPreset(forRoomSize: preset.roomSize))
         reverb.wetDryMix = clamp(preset.reverbBlend, 0, 1) * 100
@@ -174,14 +195,6 @@ final class AudioEngine: @unchecked Sendable {
                 band.bypass = true
                 band.gain = 0
             }
-        }
-
-        // Stereo Width is baked into decoded buffers (0.5 -> normal). If it
-        // changed for a loaded track, re-decode from the current position.
-        let newWidth = clamp(preset.stereoWidth, 0, 1) * 2
-        if abs(newWidth - currentWidthFactor) > 0.01 {
-            currentWidthFactor = newWidth
-            reloadDecoderAtCurrentPositionLocked()
         }
     }
 

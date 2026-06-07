@@ -18,12 +18,23 @@ final class PresetSelectorViewModel {
 
     /// Invoked when the user enters a space, so the owner can apply it to audio.
     var onApply: ((Preset) -> Void)?
+    /// Live preview while dragging the detail sliders (reverb/EQ only).
+    var onPreview: ((Preset) -> Void)?
+    /// Revert a live preview (detail closed without entering).
+    var onCancelPreview: (() -> Void)?
 
-    init(store: PresetStore, onApply: ((Preset) -> Void)? = nil) {
+    init(
+        store: PresetStore,
+        onApply: ((Preset) -> Void)? = nil,
+        onPreview: ((Preset) -> Void)? = nil,
+        onCancelPreview: (() -> Void)? = nil
+    ) {
         self.store = store
         self.presets = store.presets
         self.selectedID = store.selectedPresetID
         self.onApply = onApply
+        self.onPreview = onPreview
+        self.onCancelPreview = onCancelPreview
     }
 
     func isSelected(_ preset: Preset) -> Bool {

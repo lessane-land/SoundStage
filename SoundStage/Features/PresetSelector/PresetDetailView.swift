@@ -8,17 +8,26 @@ struct PresetDetailView: View {
     /// Called with the (possibly tweaked) preset when the user enters the space.
     let onActivate: (Preset) -> Void
     let onClose: () -> Void
+    /// Live preview of the current slider values (reverb/EQ apply immediately).
+    var onPreview: (Preset) -> Void = { _ in }
 
     @State private var room: Double
     @State private var reverb: Double
     @State private var width: Double
     @State private var saved = false
 
-    init(preset: Preset, isActive: Bool, onActivate: @escaping (Preset) -> Void, onClose: @escaping () -> Void) {
+    init(
+        preset: Preset,
+        isActive: Bool,
+        onActivate: @escaping (Preset) -> Void,
+        onClose: @escaping () -> Void,
+        onPreview: @escaping (Preset) -> Void = { _ in }
+    ) {
         self.preset = preset
         self.isActive = isActive
         self.onActivate = onActivate
         self.onClose = onClose
+        self.onPreview = onPreview
         _room = State(initialValue: Double(preset.roomSize))
         _reverb = State(initialValue: Double(preset.reverbBlend))
         _width = State(initialValue: Double(preset.stereoWidth))
@@ -45,6 +54,10 @@ struct PresetDetailView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { onPreview(tweakedPreset) }
+        .onChange(of: room) { _, _ in onPreview(tweakedPreset) }
+        .onChange(of: reverb) { _, _ in onPreview(tweakedPreset) }
+        .onChange(of: width) { _, _ in onPreview(tweakedPreset) }
     }
 
     // MARK: - Header
