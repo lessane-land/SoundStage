@@ -82,7 +82,7 @@ final class NowPlayingViewModel {
         duration = 0
         loadTask?.cancel()
 
-        guard track.assetURL != nil else {
+        guard let assetURL = track.assetURL else {
             loadError = "This track isn't available locally and can't be played through SoundStage."
             return
         }
@@ -91,7 +91,9 @@ final class NowPlayingViewModel {
         loadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.engine.load(track: track)
+                let playURL = try await Self.resolvePlaybackURL(assetURL)
+                if Task.isCancelled { return }
+                try await self.engine.load(url: playURL)
                 if Task.isCancelled { return }
                 self.duration = self.engine.duration
                 self.isLoading = false
@@ -105,6 +107,20 @@ final class NowPlayingViewModel {
                 self.loadError = "This track can't be played through SoundStage. It may be DRM-protected or stored only in the cloud."
             }
         }
+    }
+
+    /// Local files and ipod-library assets decode directly; remote MP3s
+    /// (Deezer/Archive/Jamendo) are downloaded to a temp file first, since
+    /// AVAssetReader can't stream a remote URL.
+    private static func resolvePlaybackURL(_ url: URL) async throws -> URL {
+        if url.isFileURL || url.scheme == "ipod-library" { return url }
+        let (tempURL, _) = try await URLSession.shared.download(from: url)
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mp3")
+        try? FileManager.default.removeItem(at: dest)
+        try FileManager.default.moveItem(at: tempURL, to: dest)
+        return dest
     }
 
     // MARK: - System playback (Apple Music / cloud / protected)

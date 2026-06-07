@@ -91,10 +91,10 @@ final class AudioEngine: @unchecked Sendable {
 
     // MARK: - Loading
 
-    /// Loads a track for streaming playback. Throws if it has no asset or can't
-    /// be decoded (e.g. DRM). Performs its `await`s lock-free, then installs.
-    func load(track: Track) async throws {
-        guard let url = track.assetURL else { throw AudioEngineError.trackHasNoAsset }
+    /// Loads an audio asset (local file or ipod-library URL) for streaming
+    /// playback. Remote URLs must be downloaded to a local file first — the
+    /// caller resolves that — because AVAssetReader can't stream remote assets.
+    func load(url: URL) async throws {
         let source = try await TrackSource(url: url, sampleRate: sampleRate)
         let decoder = try source.makeDecoder(fromFrame: 0, widthFactor: snapshotWidthFactor())
         install(source: source, decoder: decoder)
