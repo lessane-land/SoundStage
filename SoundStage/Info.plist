@@ -6,5 +6,7 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>NSMotionUsageDescription</key>
+	<string>SoundStage uses AirPods motion to keep spatial sound anchored as you move your head.</string>
 </dict>
 </plist>

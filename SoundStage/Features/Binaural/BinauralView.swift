@@ -27,7 +27,10 @@ struct BinauralView: View {
                 Spacer(minLength: 6)
                 ambienceChips.padding(.top, 8)
                 sliders.padding(.top, 14)
-                playButton.padding(.top, 18)
+                if viewModel.headTrackingAvailable {
+                    headTrackingToggle.padding(.top, 12)
+                }
+                playButton.padding(.top, 14)
                 statePills.padding(.top, 16)
             }
             .padding(.bottom, 10)
@@ -134,6 +137,29 @@ struct BinauralView: View {
 
     private var beatText: String {
         viewModel.beatHz.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(viewModel.beatHz)) Hz" : String(format: "%.1f Hz", viewModel.beatHz)
+    }
+
+    private var headTrackingToggle: some View {
+        Button { viewModel.toggleHeadTracking() } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "move.3d")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Head Tracking")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Text(viewModel.headTracking ? "On" : "Off")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(viewModel.headTracking ? 0.85 : 0.45))
+            }
+            .foregroundStyle(viewModel.headTracking ? .white : .white.opacity(0.6))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .background(
+                Capsule().fill(viewModel.headTracking ? AnyShapeStyle(state.gradient.opacity(0.25)) : AnyShapeStyle(.white.opacity(0.04)))
+            )
+            .overlay(Capsule().stroke(viewModel.headTracking ? state.toColor : .white.opacity(0.1), lineWidth: 1))
+            .shadow(color: viewModel.headTracking ? state.toColor.opacity(0.3) : .clear, radius: 10)
+        }
+        .buttonStyle(ScaleButtonStyle(pressedScale: 0.96))
     }
 
     private var playButton: some View {

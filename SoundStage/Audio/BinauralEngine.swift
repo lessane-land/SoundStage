@@ -24,6 +24,8 @@ final class BinauralEngine: @unchecked Sendable {
     private var ambientType = 0        // 0 none,1 rain,2 ocean,3 forest,4 wind,5 white
     private var ambientLevel = 0.0     // 0...1
     private var spatialAmount = 0.0    // 0...1 (orbit speed)
+    private var headYaw = 0.0          // radians, from AirPods motion
+    private var headTracking = false   // anchor the soundscape to the world
 
     // Audio-thread state.
     private var phaseLeft = 0.0
@@ -51,6 +53,13 @@ final class BinauralEngine: @unchecked Sendable {
 
     func setSpatial(amount: Double) {
         spatialAmount = max(0, min(1, amount))
+    }
+
+    func setHeadYaw(_ yaw: Double) { headYaw = yaw }
+
+    func setHeadTracking(_ on: Bool) {
+        headTracking = on
+        if !on { headYaw = 0 }
     }
 
     func play() {
@@ -112,7 +121,10 @@ final class BinauralEngine: @unchecked Sendable {
         let waveInc = twoPi * 0.10 / sampleRate
         let windInc = twoPi * 0.07 / sampleRate
         let rotInc = twoPi * (spatialAmount * 0.2) / sampleRate
-        let spatial = Float(spatialAmount)
+        // Head tracking anchors the soundscape to the world at full depth; the
+        // yaw offset makes it stay put as the head turns.
+        let depth: Float = headTracking ? 1.0 : Float(spatialAmount)
+        let yaw = headTracking ? headYaw : 0.0
 
         for frame in 0..<frames {
             amplitude += ampStep
@@ -152,11 +164,12 @@ final class BinauralEngine: @unchecked Sendable {
                 amb *= ambLevel
             }
 
-            // Spatial pan of the ambient layer (orbits when spatial > 0).
+            // Spatial pan of the ambient layer (orbits, and head-anchored when
+            // head tracking is on).
             var panL: Float = 0.7071, panR: Float = 0.7071
-            if spatial > 0.001 {
+            if depth > 0.001 {
                 rotationPhase += rotInc; if rotationPhase > twoPi { rotationPhase -= twoPi }
-                let pos = Float(sin(rotationPhase)) * spatial
+                let pos = Float(sin(rotationPhase - yaw)) * depth
                 let angle = (pos * 0.5 + 0.5) * (Float.pi / 2)
                 panL = cos(angle); panR = sin(angle)
             }
