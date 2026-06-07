@@ -168,7 +168,7 @@ final class AudioEngine: @unchecked Sendable {
     func apply(_ preset: Preset) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
-        applyReverbAndEQLocked(preset)
+        applyReverbAndEQLocked(preset, reloadIR: true)
 
         // Stereo Width is baked into decoded buffers. Gentle range (0.6...1.4)
         // so widening stays clean. If it changed, re-decode from current spot.
@@ -184,7 +184,7 @@ final class AudioEngine: @unchecked Sendable {
     func applyEffects(_ preset: Preset) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
-        applyReverbAndEQLocked(preset)
+        applyReverbAndEQLocked(preset, reloadIR: false)
     }
 
     // MARK: - 16D rotation
@@ -244,13 +244,15 @@ final class AudioEngine: @unchecked Sendable {
         engine.mainMixerNode.pan = max(-1, min(1, pan))
     }
 
-    private func applyReverbAndEQLocked(_ preset: Preset) {
+    private func applyReverbAndEQLocked(_ preset: Preset, reloadIR: Bool) {
         // Room Size selects the reverberant space; Reverb Depth the wet amount.
-        // Reloading the IR clicks, so only do it when the bucket changes.
-        let newReverbPreset = Self.reverbPreset(forRoomSize: preset.roomSize)
-        if newReverbPreset != currentReverbPreset {
-            reverb.loadFactoryPreset(newReverbPreset)
-            currentReverbPreset = newReverbPreset
+        // Reloading the IR clicks, so only do it on commit (never while dragging).
+        if reloadIR {
+            let newReverbPreset = Self.reverbPreset(forRoomSize: preset.roomSize)
+            if newReverbPreset != currentReverbPreset {
+                reverb.loadFactoryPreset(newReverbPreset)
+                currentReverbPreset = newReverbPreset
+            }
         }
         reverb.wetDryMix = clamp(preset.reverbBlend, 0, 1) * 100
 
@@ -345,8 +347,10 @@ final class AudioEngine: @unchecked Sendable {
         currentReverbPreset = .mediumHall
         reverb.wetDryMix = 0
 
-        // Headroom so EQ boosts + reverb + widening can't clip the output.
-        engine.mainMixerNode.outputVolume = 0.8
+        // Headroom so EQ boosts + reverb + widening can't clip into distortion.
+        // -6 dB global EQ gain compensates the per-band boosts.
+        eq.globalGain = -6
+        engine.mainMixerNode.outputVolume = 0.9
 
         isConfigured = true
     }
