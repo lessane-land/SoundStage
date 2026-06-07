@@ -33,6 +33,9 @@ final class AudioEngine: @unchecked Sendable {
 
     private let lock = NSLock()
     private let sampleRate = 44_100.0
+    /// Single processing format for the whole chain, so EQ/reverb never get
+    /// weakened by a sample-rate mismatch. Matches the decoder's output.
+    private let processingFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
     /// Buffers scheduled ahead of the playhead.
     private let prefetchCount = 3
 
@@ -101,7 +104,7 @@ final class AudioEngine: @unchecked Sendable {
     private func install(source: TrackSource, decoder: TrackDecoder) {
         lock.lock(); defer { lock.unlock() }
         configureIfNeeded()
-        engine.connect(player, to: eq, format: source.format)
+        engine.connect(player, to: eq, format: processingFormat)
         player.stop()
         generation += 1
         self.source = source
@@ -250,9 +253,9 @@ final class AudioEngine: @unchecked Sendable {
         engine.attach(eq)
         engine.attach(reverb)
 
-        engine.connect(player, to: eq, format: nil)
-        engine.connect(eq, to: reverb, format: nil)
-        engine.connect(reverb, to: engine.mainMixerNode, format: nil)
+        engine.connect(player, to: eq, format: processingFormat)
+        engine.connect(eq, to: reverb, format: processingFormat)
+        engine.connect(reverb, to: engine.mainMixerNode, format: processingFormat)
 
         reverb.loadFactoryPreset(.mediumHall)
         reverb.wetDryMix = 0

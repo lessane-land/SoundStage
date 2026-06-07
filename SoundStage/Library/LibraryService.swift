@@ -54,10 +54,11 @@ final class LibraryService: LibraryProviding {
     // MARK: - Mapping
 
     private static func track(from item: MPMediaItem) -> Track {
-        // Engine-playable only if there's a local, non-DRM asset to decode.
-        let enginePlayable = item.assetURL != nil
-            && !item.hasProtectedAsset
-            && !item.isCloudItem
+        // Engine-playable if there's a local, non-DRM asset to decode. iCloud
+        // Music Library items count as "cloud" even when they're your own
+        // downloaded, DRM-free files — so we key off assetURL + protection, not
+        // isCloudItem.
+        let enginePlayable = item.assetURL != nil && !item.hasProtectedAsset
 
         return Track(
             id: String(item.persistentID),
