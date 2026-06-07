@@ -1,29 +1,14 @@
 import SwiftUI
 
-/// App entry point.
-///
-/// Owns the shared `PresetStore` and the player view model, injects the store
-/// into the environment and locks the UI to the dark, spatial look.
+/// App entry point. SoundStage now opens on the binaural-beats generator —
+/// pure synthesis, so it works with no DRM, files, or network.
 @main
 struct SoundStageApp: App {
-    @State private var presetStore: PresetStore
-    @State private var nowPlaying: NowPlayingViewModel
-    @State private var systemPlayer: SystemMusicPlayer
-    @State private var artworkLoader = ArtworkLoader()
-
-    init() {
-        let store = PresetStore()
-        let player = SystemMusicPlayer()
-        _presetStore = State(initialValue: store)
-        _systemPlayer = State(initialValue: player)
-        _nowPlaying = State(initialValue: NowPlayingViewModel(presetStore: store, systemPlayer: player))
-    }
+    @State private var binaural = BinauralViewModel()
 
     var body: some Scene {
         WindowGroup {
-            NowPlayingView(viewModel: nowPlaying)
-                .environment(presetStore)
-                .environment(artworkLoader)
+            BinauralView(viewModel: binaural)
                 .preferredColorScheme(.dark)
         }
     }
