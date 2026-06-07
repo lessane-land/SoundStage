@@ -31,6 +31,8 @@ enum Ambience: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var label: String { self == .noise ? "White Noise" : rawValue }
+
     var icon: String {
         switch self {
         case .rain: return "cloud.rain.fill"

@@ -56,6 +56,10 @@ final class BinauralViewModel {
         }
     }
 
+    func setPlaying(_ on: Bool) {
+        if on != isPlaying { togglePlay() }
+    }
+
     func select(_ state: BinauralState) {
         current = state
         carrierHz = state.carrierHz
