@@ -6,6 +6,7 @@ import SwiftUI
 struct NowPlayingView: View {
     @State var viewModel: NowPlayingViewModel
     @Environment(PresetStore.self) private var presetStore
+    @Environment(AppleMusicService.self) private var appleMusic
 
     @State private var showPresetSelector = false
     @State private var showLibrary = false
@@ -32,6 +33,13 @@ struct NowPlayingView: View {
                 trackInfo
                     .padding(.top, 18)
 
+                if viewModel.isAppleMusic {
+                    Label("Spatial effects unavailable for Apple Music", systemImage: "info.circle")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .padding(.top, 8)
+                }
+
                 Spacer(minLength: 8)
 
                 waveformSection
@@ -57,7 +65,7 @@ struct NowPlayingView: View {
             )
         }
         .sheet(isPresented: $showLibrary) {
-            LibraryView(viewModel: LibraryViewModel()) { track, queue in
+            LibraryView(viewModel: LibraryViewModel(appleMusic: appleMusic)) { track, queue in
                 viewModel.play(track, in: queue)
             }
         }
@@ -295,4 +303,5 @@ struct NowPlayingView: View {
     NowPlayingView(viewModel: NowPlayingViewModel(presetStore: store))
         .environment(store)
         .environment(ArtworkLoader())
+        .environment(AppleMusicService())
 }

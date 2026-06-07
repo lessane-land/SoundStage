@@ -1,12 +1,10 @@
 import Foundation
 import Observation
 
-/// Drives the main player screen.
-///
-/// Holds the current track, transport state, the active preset and live
-/// playback progress, delegating audio work to the (non-MainActor)
-/// `AudioEngine`. Loading decodes the asset asynchronously, so `load` kicks off
-/// a task and reflects `isLoading` / `loadError` for the UI.
+/// Drives the main player screen, routing playback by track origin:
+/// `.local` tracks stream through `AudioEngine` (spatial presets apply);
+/// `.appleMusic` tracks play via `AppleMusicService` / `ApplicationMusicPlayer`
+/// (Apple's DRM means the presets are a visual theme only).
 @MainActor
 @Observable
 final class NowPlayingViewModel {
@@ -17,41 +15,36 @@ final class NowPlayingViewModel {
     private(set) var isLoading = false
     var loadError: String?
 
-    /// Elapsed / total playback time in seconds, refreshed by the ticker.
     private(set) var elapsed: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
-
-    /// True while the user is dragging the scrubber, which pauses ticker updates.
     private(set) var isSeeking = false
 
-    /// The current play queue and the index of the playing track within it.
     private(set) var queue: [Track] = []
     private(set) var queueIndex = 0
 
     private let presetStore: PresetStore
     private let engine: AudioEngine
+    private let appleMusic: AppleMusicService?
     private var ticker: Task<Void, Never>?
     private var loadTask: Task<Void, Never>?
 
-    init(presetStore: PresetStore, engine: AudioEngine = .shared) {
+    init(presetStore: PresetStore, engine: AudioEngine = .shared, appleMusic: AppleMusicService? = nil) {
         self.presetStore = presetStore
         self.engine = engine
+        self.appleMusic = appleMusic
         self.currentTrack = .placeholder
         self.activePreset = presetStore.selectedPreset
     }
 
-    /// Progress as a 0...1 fraction for the scrubber.
-    var progress: Double {
-        duration > 0 ? min(1, elapsed / duration) : 0
-    }
+    var progress: Double { duration > 0 ? min(1, elapsed / duration) : 0 }
+    var hasTrack: Bool { currentTrack.isPlayable }
+    var isAppleMusic: Bool { currentTrack.origin == .appleMusic }
+    /// Whether the spatial presets actually process the current track's audio.
+    var effectsAvailable: Bool { !isAppleMusic }
 
-    /// Whether there's a real, playable track loaded.
-    var hasTrack: Bool { currentTrack.assetURL != nil }
-
-    var canGoNext: Bool { queueIndex + 1 < queue.count }
+    var canGoNext: Bool { isAppleMusic ? !queue.isEmpty : queueIndex + 1 < queue.count }
     var canGoPrevious: Bool { !queue.isEmpty }
 
-    /// Wires up the engine, applies the persisted preset and starts the ticker.
     func prepare() {
         engine.prepare()
         engine.apply(activePreset)
@@ -60,23 +53,32 @@ final class NowPlayingViewModel {
 
     func togglePlayback() {
         guard hasTrack, !isLoading else { return }
-        isPlaying.toggle()
-        if isPlaying {
-            engine.play()
+        if isAppleMusic {
+            guard let appleMusic else { return }
+            Task {
+                await appleMusic.togglePlayback()
+                isPlaying = appleMusic.isPlaying
+            }
         } else {
-            engine.pause()
+            isPlaying.toggle()
+            if isPlaying { engine.play() } else { engine.pause() }
         }
     }
 
-    /// Starts playing `track` within the context of `tracks` so prev/next can
-    /// move through the surrounding list.
     func play(_ track: Track, in tracks: [Track]) {
         queue = tracks
         queueIndex = tracks.firstIndex(of: track) ?? 0
-        load(track)
+        if track.origin == .appleMusic {
+            playAppleMusic(track, in: tracks)
+        } else {
+            load(track)
+        }
     }
 
+    // MARK: - Local playback
+
     func load(_ track: Track, autoPlay: Bool = true) {
+        appleMusic?.pause()
         currentTrack = track
         isPlaying = false
         elapsed = 0
@@ -101,7 +103,6 @@ final class NowPlayingViewModel {
                     self.engine.play()
                 }
             } catch is CancellationError {
-                // superseded by a newer load
             } catch {
                 self.isLoading = false
                 self.loadError = "This track can't be played through SoundStage. It may be DRM-protected or stored only in the cloud."
@@ -109,15 +110,47 @@ final class NowPlayingViewModel {
         }
     }
 
+    // MARK: - Apple Music playback
+
+    private func playAppleMusic(_ track: Track, in tracks: [Track]) {
+        guard let appleMusic else {
+            loadError = "Apple Music isn't set up on this device."
+            return
+        }
+        engine.pause()
+        loadTask?.cancel()
+        currentTrack = track
+        elapsed = 0
+        duration = track.duration
+        isPlaying = false
+        isLoading = true
+        Task {
+            await appleMusic.play(trackID: track.id, queueIDs: tracks.map(\.id))
+            isLoading = false
+            isPlaying = appleMusic.isPlaying
+            if appleMusic.duration > 0 { duration = appleMusic.duration }
+        }
+    }
+
+    // MARK: - Transport
+
     func next() {
+        if isAppleMusic {
+            guard let appleMusic else { return }
+            Task { await appleMusic.next(); syncAppleNowPlaying() }
+            return
+        }
         guard canGoNext else { return }
         queueIndex += 1
         load(queue[queueIndex])
     }
 
-    /// Restarts the current track if we're past the first few seconds,
-    /// otherwise steps to the previous track.
     func previous() {
+        if isAppleMusic {
+            guard let appleMusic else { return }
+            Task { await appleMusic.previous(); syncAppleNowPlaying() }
+            return
+        }
         guard !queue.isEmpty else { return }
         if elapsed > 3 || queueIndex == 0 {
             elapsed = 0
@@ -147,7 +180,11 @@ final class NowPlayingViewModel {
 
     func endSeeking() {
         guard isSeeking else { return }
-        engine.seek(to: elapsed)
+        if isAppleMusic {
+            appleMusic?.seek(to: elapsed)
+        } else {
+            engine.seek(to: elapsed)
+        }
         isSeeking = false
     }
 
@@ -166,10 +203,20 @@ final class NowPlayingViewModel {
 
     private func tick() {
         guard !isSeeking else { return }
+
+        if isAppleMusic {
+            guard let appleMusic else { return }
+            appleMusic.refreshState()
+            isPlaying = appleMusic.isPlaying
+            if appleMusic.duration > 0 { duration = appleMusic.duration }
+            if isPlaying { elapsed = appleMusic.elapsed }
+            syncAppleNowPlaying()
+            return
+        }
+
         duration = engine.duration
         if isPlaying {
             elapsed = engine.currentTime
-            // At the end of the track, advance to the next one or stop.
             if duration > 0, elapsed >= duration - 0.05 {
                 if canGoNext {
                     next()
@@ -180,5 +227,16 @@ final class NowPlayingViewModel {
                 }
             }
         }
+    }
+
+    /// Tracks the Apple Music system player advancing to a new queue entry.
+    private func syncAppleNowPlaying() {
+        guard let appleMusic,
+              let id = appleMusic.nowPlayingID,
+              id != currentTrack.id,
+              let track = queue.first(where: { $0.id == id }) else { return }
+        currentTrack = track
+        queueIndex = queue.firstIndex(where: { $0.id == id }) ?? queueIndex
+        if appleMusic.duration > 0 { duration = appleMusic.duration }
     }
 }

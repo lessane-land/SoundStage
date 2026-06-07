@@ -15,16 +15,28 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .background(DesignTokens.Palette.backgroundPrimary.ignoresSafeArea())
-                .navigationTitle("Library")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { dismiss() }
-                            .foregroundStyle(DesignTokens.Palette.accent)
+            VStack(spacing: 0) {
+                if viewModel.hasAppleMusic {
+                    Picker("Source", selection: $viewModel.source) {
+                        ForEach(LibraryViewModel.Source.allCases) { source in
+                            Text(source.rawValue).tag(source)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, DesignTokens.Spacing.m)
+                    .padding(.bottom, DesignTokens.Spacing.s)
                 }
+                content
+            }
+            .background(DesignTokens.Palette.backgroundPrimary.ignoresSafeArea())
+            .navigationTitle("Library")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(DesignTokens.Palette.accent)
+                }
+            }
         }
         .presentationBackground(DesignTokens.Palette.backgroundPrimary)
         .task { await viewModel.loadIfNeeded() }
@@ -38,14 +50,18 @@ struct LibraryView: View {
         case .accessDenied:
             messageState(
                 systemImage: "lock.fill",
-                title: "No library access",
-                message: "Allow access to your music library in Settings to browse and play your tracks."
+                title: viewModel.source == .appleMusic ? "No Apple Music access" : "No library access",
+                message: viewModel.source == .appleMusic
+                    ? "Allow Apple Music access in Settings to browse and play your subscription library."
+                    : "Allow access to your music library in Settings to browse and play your tracks."
             )
         case .empty:
             messageState(
                 systemImage: "music.note.list",
                 title: "No songs found",
-                message: "There are no songs in your local music library yet."
+                message: viewModel.source == .appleMusic
+                    ? "There are no songs in your Apple Music library yet."
+                    : "There are no songs in your local music library yet."
             )
         case .loaded:
             trackList

@@ -1,11 +1,19 @@
 import Foundation
 
-/// A playable item from the user's local music library.
+/// Where a track comes from, which decides how it's played.
+enum TrackOrigin: Equatable, Sendable {
+    /// Local, non-DRM file played through `AudioEngine` (spatial presets apply).
+    case local
+    /// Apple Music catalog/library item played via `ApplicationMusicPlayer`
+    /// (Apple's DRM prevents the presets from processing the audio).
+    case appleMusic
+}
+
+/// A playable item, either a local library asset or an Apple Music song.
 ///
-/// A plain `Sendable` value derived from `MPMediaItem`. `assetURL` is the
-/// local asset the audio engine reads; it can be `nil` for items with no
-/// local asset (e.g. cloud-only tracks not downloaded), which the engine
-/// treats as unplayable.
+/// A plain `Sendable` value. For `.local` tracks `assetURL` is the file the
+/// audio engine decodes; for `.appleMusic` tracks `appleMusicID` is the catalog
+/// id used by `ApplicationMusicPlayer`.
 struct Track: Identifiable, Equatable, Sendable {
     let id: String
     let title: String
@@ -18,9 +26,18 @@ struct Track: Identifiable, Equatable, Sendable {
     /// plain `UInt64` so `Track` stays free of MediaPlayer types and `Sendable`.
     let artworkID: UInt64?
 
-    /// Whether the track has a local, non-DRM asset the engine can decode.
-    /// Protected (Apple Music) or cloud-only items are not playable.
+    /// Whether the track can actually be played. Local: has a non-DRM asset.
+    /// Apple Music: always true (played via the system player).
     let isPlayable: Bool
+
+    /// Where the track comes from / how it's played.
+    var origin: TrackOrigin = .local
+
+    /// Apple Music catalog id, for `.appleMusic` tracks.
+    var appleMusicID: String? = nil
+
+    /// Remote artwork URL (Apple Music), loaded by `ArtworkView` when present.
+    var artworkURL: URL? = nil
 
     /// `mm:ss` formatted duration for display.
     var formattedDuration: String {

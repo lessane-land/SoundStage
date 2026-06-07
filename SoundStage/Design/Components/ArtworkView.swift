@@ -16,7 +16,16 @@ struct ArtworkView: View {
 
     var body: some View {
         Group {
-            if let image {
+            if let url = track.artworkURL {
+                // Apple Music: remote artwork.
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        placeholder
+                    }
+                }
+            } else if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -30,6 +39,7 @@ struct ArtworkView: View {
                 .stroke(DesignTokens.Palette.cardStroke, lineWidth: 1)
         )
         .task(id: track.id) {
+            guard track.artworkURL == nil else { return }
             image = await loader.image(for: track, size: CGSize(width: 600, height: 600))
         }
         .accessibilityHidden(true)

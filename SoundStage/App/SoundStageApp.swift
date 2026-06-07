@@ -8,18 +8,22 @@ import SwiftUI
 struct SoundStageApp: App {
     @State private var presetStore: PresetStore
     @State private var nowPlaying: NowPlayingViewModel
+    @State private var appleMusic: AppleMusicService
     @State private var artworkLoader = ArtworkLoader()
 
     init() {
         let store = PresetStore()
+        let music = AppleMusicService()
         _presetStore = State(initialValue: store)
-        _nowPlaying = State(initialValue: NowPlayingViewModel(presetStore: store))
+        _appleMusic = State(initialValue: music)
+        _nowPlaying = State(initialValue: NowPlayingViewModel(presetStore: store, appleMusic: music))
     }
 
     var body: some Scene {
         WindowGroup {
             NowPlayingView(viewModel: nowPlaying)
                 .environment(presetStore)
+                .environment(appleMusic)
                 .environment(artworkLoader)
                 .preferredColorScheme(.dark)
         }
