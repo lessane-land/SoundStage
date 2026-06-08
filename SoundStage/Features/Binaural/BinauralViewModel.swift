@@ -71,7 +71,8 @@ final class BinauralViewModel {
     }
 
     private func publishNowPlaying() {
-        nowPlaying.update(title: current.name, subtitle: "Binaural · Spatial", isPlaying: isPlaying)
+        nowPlaying.update(title: current.name, subtitle: "Binaural · Spatial",
+                          fromHex: current.fromHex, toHex: current.toHex, isPlaying: isPlaying)
     }
 
     // MARK: - Soundscape mix
