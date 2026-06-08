@@ -6,6 +6,11 @@
 	objectVersion = 70;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		1C000000000000000000000D /* widget_ext.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1C0000000000000000000002 /* widget_ext.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		1C000000000000000000000F /* SoundStageSessionActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C0000000000000000000010 /* SoundStageSessionActivity.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		1B000000000000000000000B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -14,11 +19,34 @@
 			remoteGlobalIDString = 1A0000000000000000000005;
 			remoteInfo = SoundStage;
 		};
+		1C000000000000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1A0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1C0000000000000000000001;
+			remoteInfo = "widget ext";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		1C000000000000000000000C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				1C000000000000000000000D /* widget_ext.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		1A0000000000000000000006 /* SoundStage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SoundStage.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B0000000000000000000002 /* SoundStageTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SoundStageTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1C0000000000000000000002 /* widget_ext.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = widget_ext.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		1C0000000000000000000010 /* SoundStageSessionActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SoundStageSessionActivity.swift; path = SoundStage/Audio/SoundStageSessionActivity.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -29,11 +57,19 @@
 			);
 			target = 1A0000000000000000000005 /* SoundStage */;
 		};
+		1C000000000000000000000E /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 1C0000000000000000000001 /* widget ext */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1A0000000000000000000004 /* SoundStage */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (020AC52D2FD573B400A66017 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = SoundStage; sourceTree = "<group>"; };
 		1B0000000000000000000003 /* SoundStageTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = SoundStageTests; sourceTree = "<group>"; };
+		1C0000000000000000000003 /* widget ext */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (1C000000000000000000000E /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = "widget ext"; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +87,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1C0000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -59,6 +102,7 @@
 			children = (
 				1A0000000000000000000004 /* SoundStage */,
 				1B0000000000000000000003 /* SoundStageTests */,
+				1C0000000000000000000003 /* widget ext */,
 				1A0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -68,6 +112,7 @@
 			children = (
 				1A0000000000000000000006 /* SoundStage.app */,
 				1B0000000000000000000002 /* SoundStageTests.xctest */,
+				1C0000000000000000000002 /* widget_ext.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -82,10 +127,12 @@
 				1A0000000000000000000007 /* Sources */,
 				1A0000000000000000000008 /* Frameworks */,
 				1A0000000000000000000009 /* Resources */,
+				1C000000000000000000000C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				1C000000000000000000000A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				1A0000000000000000000004 /* SoundStage */,
@@ -116,6 +163,26 @@
 			productReference = 1B0000000000000000000002 /* SoundStageTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		1C0000000000000000000001 /* widget ext */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1C0000000000000000000007 /* Build configuration list for PBXNativeTarget "widget ext" */;
+			buildPhases = (
+				1C0000000000000000000004 /* Sources */,
+				1C0000000000000000000005 /* Frameworks */,
+				1C0000000000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1C0000000000000000000003 /* widget ext */,
+			);
+			name = "widget ext";
+			productName = "widget ext";
+			productReference = 1C0000000000000000000002 /* widget_ext.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -132,6 +199,9 @@
 					1B0000000000000000000001 = {
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = 1A0000000000000000000005;
+					};
+					1C0000000000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
 					};
 				};
 			};
@@ -151,6 +221,7 @@
 			targets = (
 				1A0000000000000000000005 /* SoundStage */,
 				1B0000000000000000000001 /* SoundStageTests */,
+				1C0000000000000000000001 /* widget ext */,
 			);
 		};
 /* End PBXProject section */
@@ -164,6 +235,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		1B0000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1C0000000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -187,6 +265,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1C0000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1C000000000000000000000F /* SoundStageSessionActivity.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -194,6 +280,11 @@
 			isa = PBXTargetDependency;
 			target = 1A0000000000000000000005 /* SoundStage */;
 			targetProxy = 1B000000000000000000000B /* PBXContainerItemProxy */;
+		};
+		1C000000000000000000000A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1C0000000000000000000001 /* widget ext */;
+			targetProxy = 1C000000000000000000000B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -405,6 +496,60 @@
 			};
 			name = Release;
 		};
+		1C0000000000000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "widget ext/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = SoundStage;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lessane.soundstage.widget;
+				PRODUCT_NAME = widget_ext;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1C0000000000000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "widget ext/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = SoundStage;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lessane.soundstage.widget;
+				PRODUCT_NAME = widget_ext;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -431,6 +576,15 @@
 			buildConfigurations = (
 				1B0000000000000000000008 /* Debug */,
 				1B0000000000000000000009 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1C0000000000000000000007 /* Build configuration list for PBXNativeTarget "widget ext" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1C0000000000000000000008 /* Debug */,
+				1C0000000000000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
