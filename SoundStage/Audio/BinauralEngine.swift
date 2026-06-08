@@ -325,10 +325,33 @@ final class BinauralEngine: @unchecked Sendable {
                   let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames) else { continue }
             do {
                 try file.read(into: buffer)
-                return buffer
+                return loopable(buffer)
             } catch { continue }
         }
         return nil
+    }
+
+    /// Crossfades a buffer's tail back into its head (equal power) so it loops
+    /// seamlessly even if the recording isn't a perfect loop. Returns the
+    /// original buffer if it's too short / not float to process.
+    private func loopable(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        let total = Int(buffer.frameLength)
+        let fade = min(Int(buffer.format.sampleRate * 0.12), total / 8)   // ≤120 ms, ≤1/8
+        guard fade > 64, total > fade * 2, let src = buffer.floatChannelData,
+              let out = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: AVAudioFrameCount(total - fade)),
+              let dst = out.floatChannelData else { return buffer }
+        let newLen = total - fade
+        let channels = Int(buffer.format.channelCount)
+        for ch in 0..<channels {
+            let s = src[ch], d = dst[ch]
+            d.update(from: s, count: newLen)          // body (includes the head)
+            for i in 0..<fade {                       // blend faded-out tail into head
+                let t = Float(i) / Float(fade)
+                d[i] = s[i] * sin(t * .pi / 2) + s[newLen + i] * cos(t * .pi / 2)
+            }
+        }
+        out.frameLength = AVAudioFrameCount(newLen)
+        return out
     }
 
     /// White noise in -1...1.

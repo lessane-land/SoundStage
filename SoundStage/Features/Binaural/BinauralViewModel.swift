@@ -33,6 +33,7 @@ final class BinauralViewModel {
 
     private let engine: BinauralEngine
     private let tracker = HeadTracker()
+    private let nowPlaying = NowPlayingController()
 
     init(engine: BinauralEngine = .shared) {
         self.engine = engine
@@ -42,6 +43,14 @@ final class BinauralViewModel {
         self.beatHz = start.beatHz
         // Head tracking is always on (no UI). No-op without supported AirPods.
         tracker.start(onYaw: { engine.setHeadYaw($0) })
+        // Lock-screen / Control Center transport.
+        nowPlaying.onToggle = { [weak self] in self?.togglePlay() }
+        nowPlaying.onPlay = { [weak self] in self?.setPlaying(true) }
+        nowPlaying.onPause = { [weak self] in self?.setPlaying(false) }
+    }
+
+    private func publishNowPlaying() {
+        nowPlaying.update(title: current.name, subtitle: "Binaural · Spatial", isPlaying: isPlaying)
     }
 
     // MARK: - Soundscape mix
@@ -129,6 +138,7 @@ final class BinauralViewModel {
         } else {
             engine.pause()
         }
+        publishNowPlaying()
     }
 
     func setPlaying(_ on: Bool) {
@@ -155,6 +165,7 @@ final class BinauralViewModel {
         carrierHz = state.carrierHz
         beatHz = state.beatHz
         engine.setTone(carrier: carrierHz, beat: beatHz)
+        publishNowPlaying()
     }
 
     func setCarrier(_ value: Double) {

@@ -8,5 +8,10 @@
 	</array>
 	<key>NSMotionUsageDescription</key>
 	<string>SoundStage uses AirPods motion to keep spatial sound anchored as you move your head.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>
