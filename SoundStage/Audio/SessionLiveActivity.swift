@@ -11,7 +11,6 @@ final class SessionLiveActivity {
 
     func start(state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        end()
         let content = ActivityContent(
             state: makeState(state, startDate: startDate, endDate: endDate, isPlaying: isPlaying),
             staleDate: endDate
@@ -23,19 +22,22 @@ final class SessionLiveActivity {
     }
 
     func update(state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) {
-        guard let activity else { return }
+        guard activity != nil else { return }
         let content = ActivityContent(
             state: makeState(state, startDate: startDate, endDate: endDate, isPlaying: isPlaying),
             staleDate: endDate
         )
-        Task { @MainActor in await activity.update(content) }
+        Task { @MainActor in
+            await self.activity?.update(content)
+        }
     }
 
     func end() {
-        guard let activity else { return }
-        let current = activity.content.state
-        self.activity = nil
-        Task { @MainActor in await activity.end(ActivityContent(state: current, staleDate: nil), dismissalPolicy: .immediate) }
+        Task { @MainActor in
+            guard let activity = self.activity else { return }
+            self.activity = nil
+            await activity.end(ActivityContent(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
+        }
     }
 
     private func makeState(_ state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) -> SoundStageSessionAttributes.ContentState {
