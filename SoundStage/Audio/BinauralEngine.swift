@@ -340,7 +340,7 @@ final class BinauralEngine: @unchecked Sendable {
     /// original buffer if it's too short / not float to process.
     private func loopable(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
         let total = Int(buffer.frameLength)
-        let fade = min(Int(buffer.format.sampleRate * 0.12), total / 8)   // ≤120 ms, ≤1/8
+        let fade = min(Int(buffer.format.sampleRate * 0.5), total / 5)    // ≤500 ms, ≤1/5 — long, gentle seam
         guard fade > 64, total > fade * 2, let src = buffer.floatChannelData,
               let out = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: AVAudioFrameCount(total - fade)),
               let dst = out.floatChannelData else { return buffer }
