@@ -2,79 +2,95 @@
 //  widget_extLiveActivity.swift
 //  widget ext
 //
-//  Created by Morales, Vanesa on 08/06/2026.
-//
 
 import ActivityKit
 import WidgetKit
 import SwiftUI
 
-struct widget_extAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        // Dynamic stateful properties about your activity go here!
-        var emoji: String
-    }
+private func color(_ hex: UInt32) -> Color {
+    Color(.sRGB,
+          red: Double((hex >> 16) & 0xFF) / 255,
+          green: Double((hex >> 8) & 0xFF) / 255,
+          blue: Double(hex & 0xFF) / 255)
+}
 
-    // Fixed non-changing properties about your activity go here!
-    var name: String
+private func gradient(_ s: SoundStageSessionAttributes.ContentState) -> LinearGradient {
+    LinearGradient(colors: [color(s.fromHex), color(s.toHex)], startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
 struct widget_extLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: widget_extAttributes.self) { context in
-            // Lock screen/banner UI goes here
-            VStack {
-                Text("Hello \(context.state.emoji)")
-            }
-            .activityBackgroundTint(Color.cyan)
-            .activitySystemActionForegroundColor(Color.black)
-
+        ActivityConfiguration(for: SoundStageSessionAttributes.self) { context in
+            lockScreen(context.state)
+                .activityBackgroundTint(Color.black.opacity(0.5))
+                .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
-            DynamicIsland {
-                // Expanded UI goes here.  Compose the expanded UI through
-                // various regions, like leading/trailing/center/bottom
+            let s = context.state
+            return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Text("Leading")
+                    Circle().fill(gradient(s)).frame(width: 30, height: 30)
+                        .overlay(Image(systemName: "moon.stars.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white))
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("Trailing")
+                    countdown(s).font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white).monospacedDigit()
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    VStack(spacing: 1) {
+                        Text(s.stateName).font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                        Text(s.bandHz).font(.system(size: 10, weight: .semibold, design: .rounded)).foregroundStyle(.white.opacity(0.6))
+                    }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text("Bottom \(context.state.emoji)")
-                    // more content
+                    progressBar(s)
                 }
             } compactLeading: {
-                Text("L")
+                Image(systemName: "moon.stars.fill").foregroundStyle(color(s.toHex))
             } compactTrailing: {
-                Text("T \(context.state.emoji)")
+                countdown(s).font(.system(.caption2, design: .rounded).weight(.bold))
+                    .monospacedDigit().foregroundStyle(.white)
             } minimal: {
-                Text(context.state.emoji)
+                Image(systemName: "moon.stars.fill").foregroundStyle(color(s.toHex))
             }
-            .widgetURL(URL(string: "http://www.apple.com"))
-            .keylineTint(Color.red)
+            .keylineTint(color(s.toHex))
         }
     }
-}
 
-extension widget_extAttributes {
-    fileprivate static var preview: widget_extAttributes {
-        widget_extAttributes(name: "World")
+    private func lockScreen(_ s: SoundStageSessionAttributes.ContentState) -> some View {
+        HStack(spacing: 14) {
+            Circle().fill(gradient(s)).frame(width: 44, height: 44)
+                .overlay(Image(systemName: "moon.stars.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(.white))
+                .shadow(color: color(s.toHex).opacity(0.6), radius: 8)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(s.stateName).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                Text(s.bandHz).font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(.white.opacity(0.55))
+                progressBar(s).padding(.top, 2)
+            }
+            Spacer()
+            countdown(s).font(.system(size: 26, weight: .heavy, design: .rounded))
+                .monospacedDigit().foregroundStyle(.white)
+        }
+        .padding(16)
     }
-}
 
-extension widget_extAttributes.ContentState {
-    fileprivate static var smiley: widget_extAttributes.ContentState {
-        widget_extAttributes.ContentState(emoji: "😀")
-     }
-     
-     fileprivate static var starEyes: widget_extAttributes.ContentState {
-         widget_extAttributes.ContentState(emoji: "🤩")
-     }
-}
+    @ViewBuilder
+    private func countdown(_ s: SoundStageSessionAttributes.ContentState) -> some View {
+        if let end = s.endDate {
+            Text(timerInterval: Date()...end, countsDown: true)
+        } else {
+            Image(systemName: "infinity")
+        }
+    }
 
-#Preview("Notification", as: .content, using: widget_extAttributes.preview) {
-   widget_extLiveActivity()
-} contentStates: {
-    widget_extAttributes.ContentState.smiley
-    widget_extAttributes.ContentState.starEyes
+    @ViewBuilder
+    private func progressBar(_ s: SoundStageSessionAttributes.ContentState) -> some View {
+        if let end = s.endDate {
+            ProgressView(timerInterval: s.startDate...end, countsDown: false)
+                .progressViewStyle(.linear)
+                .tint(color(s.toHex))
+                .labelsHidden()
+        } else {
+            Capsule().fill(gradient(s)).frame(height: 4).opacity(0.7)
+        }
+    }
 }

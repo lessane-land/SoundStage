@@ -10,6 +10,10 @@ struct SoundStageApp: App {
         WindowGroup {
             BinauralView(viewModel: binaural)
                 .preferredColorScheme(.dark)
+                .onOpenURL { url in
+                    // Home Screen widget → soundstage://play
+                    if url.host == "play" { binaural.setPlaying(true) }
+                }
         }
     }
 }

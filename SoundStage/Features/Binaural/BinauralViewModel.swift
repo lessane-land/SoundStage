@@ -38,9 +38,11 @@ final class BinauralViewModel {
     private(set) var sessionRunning = false
     private(set) var sessionRemaining = 30 * 60
     private var sessionEndDate: Date?
+    private var sessionStartDate: Date?
     private var sessionElapsed = 0
     private var sessionStartBeat = 0.0
     private var sessionTimer: Timer?
+    private let liveActivity = SessionLiveActivity()
 
     /// Favorites.
     private(set) var presets: [BinauralPreset] = BinauralPresetStore.load()
@@ -192,9 +194,11 @@ final class BinauralViewModel {
     func startSession() {
         sessionStartBeat = beatHz
         sessionElapsed = 0
+        let now = Date()
+        sessionStartDate = now
         if let total = Self.sessionDurations[sessionDurationIndex] {
             sessionRemaining = total
-            sessionEndDate = Date().addingTimeInterval(TimeInterval(total))
+            sessionEndDate = now.addingTimeInterval(TimeInterval(total))
         } else {
             sessionEndDate = nil
             sessionRemaining = 0
@@ -203,6 +207,7 @@ final class BinauralViewModel {
         restoreVolume()
         setPlaying(true)
         startSessionTimer()
+        liveActivity.start(state: current, startDate: now, endDate: sessionEndDate, isPlaying: true)
     }
 
     func stopSession() {
@@ -211,6 +216,7 @@ final class BinauralViewModel {
         stopSessionTimer()
         restoreVolume()
         if windDown, sessionStartBeat > 0 { setBeat(sessionStartBeat) }
+        liveActivity.end()
     }
 
     private func finishSession() {
@@ -219,6 +225,7 @@ final class BinauralViewModel {
         setPlaying(false)
         restoreVolume()
         ringChime()
+        liveActivity.end()
     }
 
     private func startSessionTimer() {
@@ -278,6 +285,9 @@ final class BinauralViewModel {
         beatHz = state.beatHz
         engine.setTone(carrier: carrierHz, beat: beatHz)
         publishNowPlaying()
+        if sessionRunning, let start = sessionStartDate {
+            liveActivity.update(state: current, startDate: start, endDate: sessionEndDate, isPlaying: isPlaying)
+        }
     }
 
     func setCarrier(_ value: Double) {

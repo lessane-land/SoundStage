@@ -2,56 +2,53 @@
 //  widget_ext.swift
 //  widget ext
 //
-//  Created by Morales, Vanesa on 08/06/2026.
-//
 
 import WidgetKit
 import SwiftUI
 
-struct Provider: AppIntentTimelineProvider {
-    func placeholder(in context: Context) -> SimpleEntry {
-        SimpleEntry(date: Date(), configuration: ConfigurationAppIntent())
-    }
-
-    func snapshot(for configuration: ConfigurationAppIntent, in context: Context) async -> SimpleEntry {
-        SimpleEntry(date: Date(), configuration: configuration)
-    }
-    
-    func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<SimpleEntry> {
-        var entries: [SimpleEntry] = []
-
-        // Generate a timeline consisting of five entries an hour apart, starting from the current date.
-        let currentDate = Date()
-        for hourOffset in 0 ..< 5 {
-            let entryDate = Calendar.current.date(byAdding: .hour, value: hourOffset, to: currentDate)!
-            let entry = SimpleEntry(date: entryDate, configuration: configuration)
-            entries.append(entry)
-        }
-
-        return Timeline(entries: entries, policy: .atEnd)
-    }
-
-//    func relevances() async -> WidgetRelevances<ConfigurationAppIntent> {
-//        // Generate a list containing the contexts this widget is relevant in.
-//    }
-}
-
-struct SimpleEntry: TimelineEntry {
+struct SoundStageEntry: TimelineEntry {
     let date: Date
-    let configuration: ConfigurationAppIntent
 }
 
-struct widget_extEntryView : View {
-    var entry: Provider.Entry
+struct SoundStageProvider: TimelineProvider {
+    func placeholder(in context: Context) -> SoundStageEntry { SoundStageEntry(date: Date()) }
+    func getSnapshot(in context: Context, completion: @escaping (SoundStageEntry) -> Void) {
+        completion(SoundStageEntry(date: Date()))
+    }
+    func getTimeline(in context: Context, completion: @escaping (Timeline<SoundStageEntry>) -> Void) {
+        completion(Timeline(entries: [SoundStageEntry(date: Date())], policy: .never))
+    }
+}
+
+struct widget_extEntryView: View {
+    @Environment(\.widgetFamily) private var family
+
+    private let from = Color(.sRGB, red: 0x6C / 255, green: 0x5C / 255, blue: 0xE7 / 255)
+    private let to = Color(.sRGB, red: 0xC5 / 255, green: 0x6B / 255, blue: 0xFF / 255)
+    private var gradient: LinearGradient {
+        LinearGradient(colors: [from, to], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+    private var small: Bool { family == .systemSmall }
 
     var body: some View {
-        VStack {
-            Text("Time:")
-            Text(entry.date, style: .time)
-
-            Text("Favorite Emoji:")
-            Text(entry.configuration.favoriteEmoji)
+        VStack(alignment: .leading, spacing: small ? 8 : 10) {
+            Circle().fill(gradient)
+                .frame(width: small ? 40 : 48, height: small ? 40 : 48)
+                .overlay(Image(systemName: "waveform.path").font(.system(size: small ? 19 : 23, weight: .bold)).foregroundStyle(.white))
+                .shadow(color: to.opacity(0.5), radius: 8, y: 3)
+            Spacer(minLength: 0)
+            Text("SoundStage")
+                .font(.system(size: small ? 17 : 20, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+            HStack(spacing: 6) {
+                Image(systemName: "play.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(to)
+                Text("Tap to begin")
+                    .font(.system(size: small ? 12 : 13.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .widgetURL(URL(string: "soundstage://play"))
     }
 }
 
@@ -59,30 +56,14 @@ struct widget_ext: Widget {
     let kind: String = "widget_ext"
 
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: kind, intent: ConfigurationAppIntent.self, provider: Provider()) { entry in
-            widget_extEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+        StaticConfiguration(kind: kind, provider: SoundStageProvider()) { _ in
+            widget_extEntryView()
+                .containerBackground(for: .widget) {
+                    Color(.sRGB, red: 0x0A / 255, green: 0x0A / 255, blue: 0x12 / 255)
+                }
         }
+        .configurationDisplayName("SoundStage")
+        .description("Open SoundStage and start a session.")
+        .supportedFamilies([.systemSmall, .systemMedium])
     }
-}
-
-extension ConfigurationAppIntent {
-    fileprivate static var smiley: ConfigurationAppIntent {
-        let intent = ConfigurationAppIntent()
-        intent.favoriteEmoji = "😀"
-        return intent
-    }
-    
-    fileprivate static var starEyes: ConfigurationAppIntent {
-        let intent = ConfigurationAppIntent()
-        intent.favoriteEmoji = "🤩"
-        return intent
-    }
-}
-
-#Preview(as: .systemSmall) {
-    widget_ext()
-} timeline: {
-    SimpleEntry(date: .now, configuration: .smiley)
-    SimpleEntry(date: .now, configuration: .starEyes)
 }
