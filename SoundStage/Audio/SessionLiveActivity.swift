@@ -22,20 +22,22 @@ final class SessionLiveActivity {
     }
 
     func update(state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) {
-        guard activity != nil else { return }
+        guard self.activity != nil else { return }
         let content = ActivityContent(
             state: makeState(state, startDate: startDate, endDate: endDate, isPlaying: isPlaying),
             staleDate: endDate
         )
-        Task { @MainActor in
-            await self.activity?.update(content)
+        nonisolated(unsafe) let activity = self.activity
+        Task {
+            await activity?.update(content)
         }
     }
 
     func end() {
-        Task { @MainActor in
-            guard let activity = self.activity else { return }
-            self.activity = nil
+        nonisolated(unsafe) let activity = self.activity
+        self.activity = nil
+        Task {
+            guard let activity else { return }
             await activity.end(ActivityContent(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
         }
     }
