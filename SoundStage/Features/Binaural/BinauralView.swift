@@ -93,7 +93,15 @@ struct BinauralView: View {
                 headerButton(icon: "ellipsis") { showSettings = true }
                     .accessibilityLabel("Settings")
                 headerButton(icon: "timer") { showTimer = true }
-                    .accessibilityLabel("Session timer")
+                    .overlay(alignment: .topTrailing) {
+                        if viewModel.sessionRunning {
+                            Circle().fill(state.toColor)
+                                .frame(width: 9, height: 9)
+                                .overlay(Circle().stroke(DesignTokens.Palette.backgroundPrimary, lineWidth: 1.5))
+                                .offset(x: 1, y: -1)
+                        }
+                    }
+                    .accessibilityLabel(viewModel.sessionRunning ? "Session running" : "Session timer")
             }
         }
         .padding(.horizontal, 24)

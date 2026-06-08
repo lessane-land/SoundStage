@@ -1,35 +1,15 @@
 import SwiftUI
-import Combine
 
-/// Session timer: a gradient countdown ring with duration presets, an optional
-/// sleep fade-out and an end chime — matching the design's `TimerScreen`.
+/// Session timer UI. The session itself lives in the view model (so it keeps
+/// running when this screen is dismissed or the phone is locked); this view just
+/// drives and reflects it.
 struct BinauralTimerView: View {
     let state: BinauralState
     @Bindable var viewModel: BinauralViewModel
 
     @Environment(\.dismiss) private var dismiss
 
-    private static let presets: [(label: String, seconds: Int?)] = [
-        ("15", 15 * 60), ("30", 30 * 60), ("60", 60 * 60), ("\u{221E}", nil)
-    ]
-
-    @State private var presetIndex = 1
-    @State private var remaining = 30 * 60
-    @State private var running = false
-    @State private var fadeOut = true
-    @State private var fadeLen = 0.4   // normalized over 1...15 min
-    @State private var windDown = false
-    @State private var startBeat = 0.0
-    @State private var elapsedInfinite = 0
-
-    /// Deep-Delta floor the beat descends toward during a wind-down.
-    private let descendFloor = 1.0
-    /// How long an open-ended (∞) wind-down takes to reach the floor.
-    private let infiniteDescendSeconds = 30 * 60
-
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    private var fadeMinutes: Int { Int((1 + fadeLen * 14).rounded()) }
+    private static let labels = ["15", "30", "60", "\u{221E}"]
 
     var body: some View {
         ZStack {
@@ -51,9 +31,11 @@ struct BinauralTimerView: View {
             .padding(.horizontal, 24)
         }
         .preferredColorScheme(.dark)
-        .onAppear { windDown = ["sleep", "relax", "meditate"].contains(state.id) }
-        .onDisappear { stop() }
-        .onReceive(timer) { _ in tick() }
+        .onAppear {
+            if !viewModel.sessionRunning {
+                viewModel.windDown = ["sleep", "relax", "meditate"].contains(state.id)
+            }
+        }
     }
 
     private var header: some View {
@@ -80,18 +62,18 @@ struct BinauralTimerView: View {
         ZStack {
             Circle().stroke(.white.opacity(0.08), lineWidth: 12)
             Circle()
-                .trim(from: 0, to: fraction)
+                .trim(from: 0, to: viewModel.sessionFraction)
                 .stroke(LinearGradient(colors: [state.fromColor, state.toColor], startPoint: .topLeading, endPoint: .bottomTrailing),
                         style: StrokeStyle(lineWidth: 12, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .shadow(color: state.toColor.opacity(0.6), radius: 8)
-                .animation(.linear(duration: 0.9), value: fraction)
+                .animation(.linear(duration: 0.9), value: viewModel.sessionFraction)
             VStack(spacing: 4) {
                 Text(timeText)
                     .font(.system(size: 56, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
-                Text(running ? "REMAINING" : state.name.uppercased())
+                Text(viewModel.sessionRunning ? "REMAINING" : state.name.uppercased())
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .tracking(2)
                     .foregroundStyle(.white.opacity(0.4))
@@ -102,14 +84,11 @@ struct BinauralTimerView: View {
 
     private var presetRow: some View {
         HStack(spacing: 12) {
-            ForEach(Array(Self.presets.enumerated()), id: \.offset) { index, preset in
-                let on = index == presetIndex
-                Button {
-                    presetIndex = index
-                    remaining = preset.seconds ?? 0
-                } label: {
-                    Text(preset.label)
-                        .font(.system(size: preset.label == "\u{221E}" ? 24 : 19, weight: .bold, design: .rounded))
+            ForEach(Array(Self.labels.enumerated()), id: \.offset) { index, label in
+                let on = index == viewModel.sessionDurationIndex
+                Button { viewModel.setSessionDuration(index) } label: {
+                    Text(label)
+                        .font(.system(size: label == "\u{221E}" ? 24 : 19, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(width: 58, height: 58)
                         .background(
@@ -131,108 +110,47 @@ struct BinauralTimerView: View {
         VStack(spacing: 10) {
             BinauralGlassToggle(state: state, label: "Wind down",
                                 sub: "Gradually lower the beat toward deep Delta (1 Hz)",
-                                icon: "arrow.down.right.circle.fill", on: windDown, onChange: { windDown = $0 })
+                                icon: "arrow.down.right.circle.fill", on: viewModel.windDown,
+                                onChange: { viewModel.windDown = $0 })
             BinauralGlassToggle(state: state, label: "Fade out",
-                                sub: "Gently lower volume over the last \(fadeMinutes) min",
-                                icon: "speaker.wave.1.fill", on: fadeOut, onChange: { fadeOut = $0 })
-            if fadeOut {
-                BinauralSlider(state: state, label: "FADE LENGTH", valueText: "\(fadeMinutes) min",
-                               value: $fadeLen)
+                                sub: "Gently lower volume over the last \(viewModel.fadeMinutes) min",
+                                icon: "speaker.wave.1.fill", on: viewModel.fadeOut,
+                                onChange: { viewModel.fadeOut = $0 })
+            if viewModel.fadeOut {
+                BinauralSlider(state: state, label: "FADE LENGTH", valueText: "\(viewModel.fadeMinutes) min",
+                               value: $viewModel.fadeLen)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 2)
             }
             BinauralGlassToggle(state: state, label: "Chime at end",
                                 sub: "Soft bell when the session completes",
-                                icon: "bell.fill", on: viewModel.chime, onChange: { viewModel.chime = $0 })
+                                icon: "bell.fill", on: viewModel.chime,
+                                onChange: { viewModel.chime = $0 })
         }
     }
 
     private var startStop: some View {
-        Button { running ? stop() : start() } label: {
+        Button { viewModel.sessionRunning ? viewModel.stopSession() : viewModel.startSession() } label: {
             HStack(spacing: 10) {
-                Image(systemName: running ? "stop.fill" : "play.fill")
+                Image(systemName: viewModel.sessionRunning ? "stop.fill" : "play.fill")
                     .font(.system(size: 16, weight: .bold))
-                Text(running ? "Stop Session" : "Start Session")
+                Text(viewModel.sessionRunning ? "Stop Session" : "Start Session")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 44)
             .frame(height: 60)
             .background(
-                Capsule().fill(running ? AnyShapeStyle(.white.opacity(0.1)) : AnyShapeStyle(state.gradient))
+                Capsule().fill(viewModel.sessionRunning ? AnyShapeStyle(.white.opacity(0.1)) : AnyShapeStyle(state.gradient))
             )
-            .shadow(color: running ? .clear : state.toColor.opacity(0.45), radius: 18, y: 6)
+            .shadow(color: viewModel.sessionRunning ? .clear : state.toColor.opacity(0.45), radius: 18, y: 6)
         }
         .buttonStyle(ScaleButtonStyle())
     }
 
-    // MARK: - Logic
-
-    private var isInfinite: Bool { Self.presets[presetIndex].seconds == nil }
-
-    private var fraction: CGFloat {
-        guard let total = Self.presets[presetIndex].seconds, total > 0 else { return 1 }
-        return max(0, CGFloat(remaining) / CGFloat(total))
-    }
-
     private var timeText: String {
-        if isInfinite { return "\u{221E}" }
-        return "\(remaining / 60):\(String(format: "%02d", remaining % 60))"
-    }
-
-    private func tick() {
-        guard running else { return }
-        if !isInfinite {
-            remaining = max(0, remaining - 1)
-            applyFade()
-        } else {
-            elapsedInfinite += 1
-        }
-        applyWindDown()
-        if !isInfinite, remaining == 0 { finish() }
-    }
-
-    private func applyFade() {
-        guard fadeOut else { return }
-        let window = fadeMinutes * 60
-        if remaining <= window, window > 0 {
-            viewModel.applyFade(Double(remaining) / Double(window))
-        } else {
-            viewModel.restoreVolume()
-        }
-    }
-
-    /// Eases the beat from its starting value down to deep Delta over the session.
-    private func applyWindDown() {
-        guard windDown, startBeat > descendFloor else { return }
-        let fraction: Double
-        if let total = Self.presets[presetIndex].seconds {
-            fraction = total > 0 ? 1 - Double(remaining) / Double(total) : 1
-        } else {
-            fraction = min(1, Double(elapsedInfinite) / Double(infiniteDescendSeconds))
-        }
-        viewModel.setBeat(startBeat + (descendFloor - startBeat) * fraction)
-    }
-
-    private func start() {
-        if remaining == 0, let total = Self.presets[presetIndex].seconds { remaining = total }
-        running = true
-        startBeat = viewModel.beatHz
-        elapsedInfinite = 0
-        viewModel.restoreVolume()
-        viewModel.setPlaying(true)
-    }
-
-    private func stop() {
-        running = false
-        viewModel.restoreVolume()
-        if windDown, startBeat > 0 { viewModel.setBeat(startBeat) }
-    }
-
-    private func finish() {
-        running = false
-        viewModel.setPlaying(false)
-        viewModel.restoreVolume()
-        viewModel.ringChime()
+        if viewModel.sessionIsInfinite { return "\u{221E}" }
+        let r = viewModel.sessionRemaining
+        return "\(r / 60):\(String(format: "%02d", r % 60))"
     }
 }

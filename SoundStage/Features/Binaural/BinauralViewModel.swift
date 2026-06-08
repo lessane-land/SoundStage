@@ -28,6 +28,20 @@ final class BinauralViewModel {
     private(set) var muted = false
     var chime = true
 
+    /// Sleep session (lives here, not in the timer view, so it keeps running
+    /// when you leave that screen or lock the phone). Driven off the wall clock.
+    static let sessionDurations: [Int?] = [15 * 60, 30 * 60, 60 * 60, nil]  // nil = ∞
+    var sessionDurationIndex = 1
+    var windDown = false
+    var fadeOut = true
+    var fadeLen = 0.4
+    private(set) var sessionRunning = false
+    private(set) var sessionRemaining = 30 * 60
+    private var sessionEndDate: Date?
+    private var sessionElapsed = 0
+    private var sessionStartBeat = 0.0
+    private var sessionTimer: Timer?
+
     /// Favorites.
     private(set) var presets: [BinauralPreset] = BinauralPresetStore.load()
 
@@ -156,6 +170,104 @@ final class BinauralViewModel {
 
     func ringChime() {
         if chime { engine.playChime() }
+    }
+
+    // MARK: - Sleep session
+
+    var fadeMinutes: Int { Int((1 + fadeLen * 14).rounded()) }
+    var sessionIsInfinite: Bool { Self.sessionDurations[sessionDurationIndex] == nil }
+
+    var sessionFraction: Double {
+        guard let total = Self.sessionDurations[sessionDurationIndex], total > 0 else { return 1 }
+        return max(0, Double(sessionRemaining) / Double(total))
+    }
+
+    /// Picks a duration (15/30/60/∞). Resets the displayed time when idle.
+    func setSessionDuration(_ index: Int) {
+        guard Self.sessionDurations.indices.contains(index) else { return }
+        sessionDurationIndex = index
+        if !sessionRunning { sessionRemaining = Self.sessionDurations[index] ?? 0 }
+    }
+
+    func startSession() {
+        sessionStartBeat = beatHz
+        sessionElapsed = 0
+        if let total = Self.sessionDurations[sessionDurationIndex] {
+            sessionRemaining = total
+            sessionEndDate = Date().addingTimeInterval(TimeInterval(total))
+        } else {
+            sessionEndDate = nil
+            sessionRemaining = 0
+        }
+        sessionRunning = true
+        restoreVolume()
+        setPlaying(true)
+        startSessionTimer()
+    }
+
+    func stopSession() {
+        guard sessionRunning else { return }
+        sessionRunning = false
+        stopSessionTimer()
+        restoreVolume()
+        if windDown, sessionStartBeat > 0 { setBeat(sessionStartBeat) }
+    }
+
+    private func finishSession() {
+        sessionRunning = false
+        stopSessionTimer()
+        setPlaying(false)
+        restoreVolume()
+        ringChime()
+    }
+
+    private func startSessionTimer() {
+        stopSessionTimer()
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sessionTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        sessionTimer = timer
+    }
+
+    private func stopSessionTimer() {
+        sessionTimer?.invalidate()
+        sessionTimer = nil
+    }
+
+    private func sessionTick() {
+        guard sessionRunning else { return }
+        if let end = sessionEndDate {
+            sessionRemaining = max(0, Int(end.timeIntervalSinceNow.rounded()))
+            applySessionFade()
+            applySessionWindDown()
+            if sessionRemaining <= 0 { finishSession() }
+        } else {
+            sessionElapsed += 1
+            applySessionWindDown()
+        }
+    }
+
+    private func applySessionFade() {
+        guard fadeOut else { return }
+        let window = fadeMinutes * 60
+        if sessionRemaining <= window, window > 0 {
+            applyFade(Double(sessionRemaining) / Double(window))
+        } else {
+            restoreVolume()
+        }
+    }
+
+    /// Eases the beat from its start value down to deep Delta (1 Hz) over the session.
+    private func applySessionWindDown() {
+        guard windDown, sessionStartBeat > 1.0 else { return }
+        let fraction: Double
+        if let total = Self.sessionDurations[sessionDurationIndex], total > 0 {
+            fraction = 1 - Double(sessionRemaining) / Double(total)
+        } else {
+            fraction = min(1, Double(sessionElapsed) / Double(30 * 60))
+        }
+        setBeat(sessionStartBeat + (1.0 - sessionStartBeat) * fraction)
     }
 
     // MARK: - State / tone
