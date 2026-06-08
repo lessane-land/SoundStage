@@ -216,7 +216,7 @@ final class BinauralViewModel {
         stopSessionTimer()
         restoreVolume()
         if windDown, sessionStartBeat > 0 { setBeat(sessionStartBeat) }
-        liveActivity.end()
+        endLiveActivity()
     }
 
     private func finishSession() {
@@ -225,7 +225,19 @@ final class BinauralViewModel {
         setPlaying(false)
         restoreVolume()
         ringChime()
-        liveActivity.end()
+        endLiveActivity()
+    }
+
+    /// Pushes the current session to the Live Activity (Sendable values only).
+    private func refreshLiveActivity() {
+        guard sessionRunning, let start = sessionStartDate else { return }
+        let la = liveActivity, s = current, ed = sessionEndDate, p = isPlaying
+        Task { await la.update(state: s, startDate: start, endDate: ed, isPlaying: p) }
+    }
+
+    private func endLiveActivity() {
+        let la = liveActivity
+        Task { await la.end() }
     }
 
     private func startSessionTimer() {
@@ -285,9 +297,7 @@ final class BinauralViewModel {
         beatHz = state.beatHz
         engine.setTone(carrier: carrierHz, beat: beatHz)
         publishNowPlaying()
-        if sessionRunning, let start = sessionStartDate {
-            liveActivity.update(state: current, startDate: start, endDate: sessionEndDate, isPlaying: isPlaying)
-        }
+        refreshLiveActivity()
     }
 
     func setCarrier(_ value: Double) {

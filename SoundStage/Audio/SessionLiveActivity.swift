@@ -1,13 +1,16 @@
 import Foundation
 import ActivityKit
 
-/// Starts, updates and ends the sleep-session Live Activity (lock screen /
-/// Dynamic Island). The countdown itself self-updates in the widget from the
-/// end date, so the app only pushes updates on meaningful changes.
-@MainActor
-final class SessionLiveActivity {
+/// Manages the sleep-session Live Activity (lock screen / Dynamic Island).
+///
+/// Deliberately NOT main-actor isolated: ActivityKit's `Activity` isn't treated
+/// as `Sendable` by this toolchain, so every call to it must stay in a single
+/// nonisolated context — otherwise awaiting it from the main actor trips
+/// "sending risks data races". The one `activity` handle is only touched here,
+/// and the view model issues these calls serially.
+final class SessionLiveActivity: @unchecked Sendable {
 
-    private var activity: Activity<SoundStageSessionAttributes>?
+    nonisolated(unsafe) private var activity: Activity<SoundStageSessionAttributes>?
 
     func start(state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
@@ -21,25 +24,19 @@ final class SessionLiveActivity {
         )
     }
 
-    func update(state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) {
-        guard self.activity != nil else { return }
+    func update(state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) async {
+        guard let activity else { return }
         let content = ActivityContent(
             state: makeState(state, startDate: startDate, endDate: endDate, isPlaying: isPlaying),
             staleDate: endDate
         )
-        nonisolated(unsafe) let activity = self.activity
-        Task {
-            await activity?.update(content)
-        }
+        await activity.update(content)
     }
 
-    func end() {
-        nonisolated(unsafe) let activity = self.activity
+    func end() async {
+        guard let activity else { return }
         self.activity = nil
-        Task {
-            guard let activity else { return }
-            await activity.end(ActivityContent(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
-        }
+        await activity.end(ActivityContent(state: activity.content.state, staleDate: nil), dismissalPolicy: .immediate)
     }
 
     private func makeState(_ state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) -> SoundStageSessionAttributes.ContentState {
