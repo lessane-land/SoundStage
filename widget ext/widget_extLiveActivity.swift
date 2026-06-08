@@ -18,18 +18,36 @@ private func gradient(_ s: SoundStageSessionAttributes.ContentState) -> LinearGr
     LinearGradient(colors: [color(s.fromHex), color(s.toHex)], startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
+/// The stage-colored gradient ball, with a soft top highlight like the in-app orb.
+private struct Orb: View {
+    let state: SoundStageSessionAttributes.ContentState
+    var size: CGFloat
+    var body: some View {
+        Circle()
+            .fill(gradient(state))
+            .overlay(
+                Circle().fill(
+                    RadialGradient(colors: [.white.opacity(0.55), .clear],
+                                   center: .init(x: 0.35, y: 0.3),
+                                   startRadius: 0, endRadius: size * 0.6)
+                )
+            )
+            .frame(width: size, height: size)
+            .shadow(color: color(state.toHex).opacity(0.6), radius: size * 0.18)
+    }
+}
+
 struct widget_extLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SoundStageSessionAttributes.self) { context in
             lockScreen(context.state)
-                .activityBackgroundTint(Color.black.opacity(0.5))
+                .activityBackgroundTint(Color.black.opacity(0.55))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             let s = context.state
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Circle().fill(gradient(s)).frame(width: 30, height: 30)
-                        .overlay(Image(systemName: "moon.stars.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white))
+                    Orb(state: s, size: 34)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     countdown(s).font(.system(size: 20, weight: .heavy, design: .rounded))
@@ -45,12 +63,12 @@ struct widget_extLiveActivity: Widget {
                     progressBar(s)
                 }
             } compactLeading: {
-                Image(systemName: "moon.stars.fill").foregroundStyle(color(s.toHex))
+                Orb(state: s, size: 20)
             } compactTrailing: {
                 countdown(s).font(.system(.caption2, design: .rounded).weight(.bold))
                     .monospacedDigit().foregroundStyle(.white)
             } minimal: {
-                Image(systemName: "moon.stars.fill").foregroundStyle(color(s.toHex))
+                Orb(state: s, size: 20)
             }
             .keylineTint(color(s.toHex))
         }
@@ -58,9 +76,7 @@ struct widget_extLiveActivity: Widget {
 
     private func lockScreen(_ s: SoundStageSessionAttributes.ContentState) -> some View {
         HStack(spacing: 14) {
-            Circle().fill(gradient(s)).frame(width: 44, height: 44)
-                .overlay(Image(systemName: "moon.stars.fill").font(.system(size: 18, weight: .bold)).foregroundStyle(.white))
-                .shadow(color: color(s.toHex).opacity(0.6), radius: 8)
+            Orb(state: s, size: 48)
             VStack(alignment: .leading, spacing: 3) {
                 Text(s.stateName).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.white)
                 Text(s.bandHz).font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(.white.opacity(0.55))

@@ -13,6 +13,7 @@ final class SessionLiveActivity: @unchecked Sendable {
     nonisolated(unsafe) private var activity: Activity<SoundStageSessionAttributes>?
 
     func start(state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) {
+        guard activity == nil else { return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let content = ActivityContent(
             state: makeState(state, startDate: startDate, endDate: endDate, isPlaying: isPlaying),

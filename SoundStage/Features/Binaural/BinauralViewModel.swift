@@ -151,8 +151,10 @@ final class BinauralViewModel {
             engine.setSpatial(amount: spatialAmount)
             engine.setMasterVolume(muted ? 0 : volume)
             engine.play()
+            startLiveActivity()
         } else {
             engine.pause()
+            endLiveActivity()
         }
         publishNowPlaying()
     }
@@ -205,9 +207,9 @@ final class BinauralViewModel {
         }
         sessionRunning = true
         restoreVolume()
-        setPlaying(true)
+        setPlaying(true)            // ensures playback + starts the Live Activity
         startSessionTimer()
-        liveActivity.start(state: current, startDate: now, endDate: sessionEndDate, isPlaying: true)
+        refreshLiveActivity()       // push the countdown end date
     }
 
     func stopSession() {
@@ -216,22 +218,31 @@ final class BinauralViewModel {
         stopSessionTimer()
         restoreVolume()
         if windDown, sessionStartBeat > 0 { setBeat(sessionStartBeat) }
-        endLiveActivity()
+        sessionEndDate = nil        // playback continues; just drop the countdown
+        refreshLiveActivity()
     }
 
     private func finishSession() {
         sessionRunning = false
         stopSessionTimer()
-        setPlaying(false)
+        sessionEndDate = nil
+        setPlaying(false)           // stops playback + ends the Live Activity
         restoreVolume()
         ringChime()
-        endLiveActivity()
     }
 
-    /// Pushes the current session to the Live Activity (Sendable values only).
+    /// Shows the stage-colored Live Activity whenever playback is on.
+    private func startLiveActivity() {
+        let la = liveActivity, s = current
+        let start = sessionStartDate ?? Date(), ed = sessionEndDate
+        la.start(state: s, startDate: start, endDate: ed, isPlaying: true)
+    }
+
+    /// Pushes the current state / countdown to the Live Activity (Sendable only).
     private func refreshLiveActivity() {
-        guard sessionRunning, let start = sessionStartDate else { return }
-        let la = liveActivity, s = current, ed = sessionEndDate, p = isPlaying
+        guard isPlaying else { return }
+        let la = liveActivity, s = current
+        let start = sessionStartDate ?? Date(), ed = sessionEndDate, p = isPlaying
         Task { await la.update(state: s, startDate: start, endDate: ed, isPlaying: p) }
     }
 
