@@ -8,6 +8,7 @@ struct SoundStageSessionAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         var stateName: String        // e.g. "Deep Sleep"
         var bandHz: String           // e.g. "DELTA · 2.5 Hz"
+        var beatHz: Double           // e.g. 2.5
         var fromHex: UInt32          // gradient start
         var toHex: UInt32            // gradient end
         var startDate: Date          // for the progress ring

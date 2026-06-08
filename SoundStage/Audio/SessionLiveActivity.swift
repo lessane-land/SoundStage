@@ -45,6 +45,7 @@ final class SessionLiveActivity: @unchecked Sendable {
         return .init(
             stateName: state.name,
             bandHz: "\(state.band.uppercased()) · \(hz) Hz",
+            beatHz: state.beatHz,
             fromHex: state.fromHex,
             toHex: state.toHex,
             startDate: startDate,

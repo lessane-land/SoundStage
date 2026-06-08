@@ -63,12 +63,11 @@ struct widget_extLiveActivity: Widget {
                     progressBar(s)
                 }
             } compactLeading: {
-                Orb(state: s, size: 20)
+                Orb(state: s, size: 22)
             } compactTrailing: {
-                countdown(s).font(.system(.caption2, design: .rounded).weight(.bold))
-                    .monospacedDigit().foregroundStyle(.white)
+                compactValue(s)
             } minimal: {
-                Orb(state: s, size: 20)
+                Orb(state: s, size: 22)
             }
             .keylineTint(color(s.toHex))
         }
@@ -94,8 +93,35 @@ struct widget_extLiveActivity: Widget {
         if let end = s.endDate {
             Text(timerInterval: Date()...end, countsDown: true)
         } else {
-            Image(systemName: "infinity")
+            Image(systemName: "waveform").foregroundStyle(color(s.toHex))
         }
+    }
+
+    /// Compact-island trailing: the live countdown during a session, else the
+    /// beat frequency so the island always says something useful.
+    @ViewBuilder
+    private func compactValue(_ s: SoundStageSessionAttributes.ContentState) -> some View {
+        if let end = s.endDate {
+            Text(timerInterval: Date()...end, countsDown: true)
+                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .frame(maxWidth: 52)
+        } else {
+            HStack(spacing: 2) {
+                Text(hzText(s.beatHz))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                Text("Hz")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(color(s.toHex))
+        }
+    }
+
+    private func hzText(_ hz: Double) -> String {
+        hz.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(hz))" : String(format: "%.1f", hz)
     }
 
     @ViewBuilder
