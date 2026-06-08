@@ -35,6 +35,10 @@ final class BinauralEngine: @unchecked Sendable {
     private var hasSample = [Bool](repeating: false, count: typeCount)
     private var playersScheduled = false
 
+    /// Per-soundscape loudness trim (recordings differ in level). 1 = unchanged.
+    /// Index by type: rain ocean forest wind noise thunder fire cafe stream.
+    private let sampleTrim: [Float] = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
     // Parameters.
     private var carrierHz = 120.0
     private var beatHz = 10.0
@@ -153,7 +157,7 @@ final class BinauralEngine: @unchecked Sendable {
         configureIfNeeded()   // ensure sample players exist before routing
         let clamped = Float(max(0, min(1, level)))
         if hasSample[type], let player = players[type] {
-            player.volume = clamped * 0.8        // loops are normalized → trim
+            player.volume = clamped * 0.8 * sampleTrim[type]   // per-layer loudness trim
             ambLevels[type] = 0                  // synth stays silent for this layer
         } else {
             ambLevels[type] = clamped

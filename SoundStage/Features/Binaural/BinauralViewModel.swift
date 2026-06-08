@@ -20,7 +20,8 @@ final class BinauralViewModel {
     private(set) var beatHz: Double
 
     /// Per-layer soundscape mix (presence = active, value = layer volume 0...1).
-    private(set) var mix: [Ambience: Double] = [:]
+    /// Opens with a gentle Rain bed so the first Play sounds full, not bare.
+    private(set) var mix: [Ambience: Double] = [.rain: 0.6]
     /// Master ambience level (the AMBIENCE slider) scaling every layer.
     private(set) var ambienceLevel: Double = 0.6
     private(set) var spatialAmount: Double = 0.4

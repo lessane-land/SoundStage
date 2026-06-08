@@ -9,10 +9,12 @@ struct BinauralOrb: View {
     let isPlaying: Bool
     var size: CGFloat = 224
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var ringSize: CGFloat { size * 1.46 }
 
     var body: some View {
-        TimelineView(.animation(paused: !isPlaying && spatial < 0.01)) { timeline in
+        TimelineView(.animation(paused: reduceMotion || (!isPlaying && spatial < 0.01))) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let period = max(1.6, min(4.6, 7 / sqrt(max(1, beatHz))))
             let breath = (isPlaying ? 0.045 : 0.012) * sin(t / period * 2 * .pi)

@@ -33,6 +33,8 @@ struct BinauralView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 300)
                 .padding(.top, 4)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(state.name), \(state.band), \(beatText) beat")
                 nameAndDesc
                 Spacer(minLength: 6)
                 ambienceChips.padding(.top, 8)

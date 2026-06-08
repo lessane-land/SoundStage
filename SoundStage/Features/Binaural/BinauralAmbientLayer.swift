@@ -9,6 +9,8 @@ struct BinauralAmbientLayer: View {
     let intensity: Double
     let isPlaying: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private struct Particle {
         let x: Double, y: Double, v: Double, len: Double, ph: Double, r: Double
     }
@@ -23,7 +25,7 @@ struct BinauralAmbientLayer: View {
     }()
 
     var body: some View {
-        TimelineView(.animation(paused: !isPlaying && intensity < 0.05)) { timeline in
+        TimelineView(.animation(paused: reduceMotion || (!isPlaying && intensity < 0.05))) { timeline in
             Canvas { context, size in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                 for kind in soundscapes.sorted(by: { $0.code < $1.code }) {
