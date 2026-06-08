@@ -8,6 +8,8 @@ struct BinauralView: View {
     @State private var showMixer = false
     @State private var showPresets = false
     @State private var showSettings = false
+    @State private var showOnboarding = false
+    @AppStorage("ss.onboarded.v1") private var onboarded = false
 
     private var state: BinauralState { viewModel.current }
 
@@ -42,6 +44,13 @@ struct BinauralView: View {
         }
         .preferredColorScheme(.dark)
         .animation(.easeInOut(duration: 0.5), value: state.id)
+        .onAppear { showOnboarding = !onboarded }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            BinauralOnboardingView {
+                onboarded = true
+                showOnboarding = false
+            }
+        }
         .fullScreenCover(isPresented: $showTimer) {
             BinauralTimerView(state: state, viewModel: viewModel)
         }
