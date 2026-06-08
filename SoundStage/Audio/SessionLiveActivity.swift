@@ -28,14 +28,14 @@ final class SessionLiveActivity {
             state: makeState(state, startDate: startDate, endDate: endDate, isPlaying: isPlaying),
             staleDate: endDate
         )
-        Task { await activity.update(content) }
+        Task { @MainActor in await activity.update(content) }
     }
 
     func end() {
         guard let activity else { return }
         let current = activity.content.state
         self.activity = nil
-        Task { await activity.end(ActivityContent(state: current, staleDate: nil), dismissalPolicy: .immediate) }
+        Task { @MainActor in await activity.end(ActivityContent(state: current, staleDate: nil), dismissalPolicy: .immediate) }
     }
 
     private func makeState(_ state: BinauralState, startDate: Date, endDate: Date?, isPlaying: Bool) -> SoundStageSessionAttributes.ContentState {
