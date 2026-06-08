@@ -7,6 +7,10 @@ import Observation
 @Observable
 final class BinauralViewModel {
 
+    /// Shared instance so App Intents (Siri/Shortcuts) and widgets drive the
+    /// same player the UI shows.
+    static let shared = BinauralViewModel()
+
     let states = BinauralCatalog.all
     private(set) var current: BinauralState
     private(set) var isPlaying = false
